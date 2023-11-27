@@ -640,6 +640,11 @@ int tls_collect_extensions(SSL_CONNECTION *s, PACKET *packet,
             SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_R_BAD_EXTENSION);
             goto err;
         }
+
+        if(type == 53){
+            printf("move early_data_state to SSL_DNS_CCS\n");
+            s->early_data_state = SSL_DNS_CCS;
+        }
         /*
          * Verify this extension is allowed. We only check duplicates for
          * extensions that we recognise. We also have a special case for the
@@ -1444,17 +1449,20 @@ static int final_key_share(SSL_CONNECTION *s, unsigned int context, int sent)
 
                 /*
                  * Find the first group we allow that is also in client's list
+                 && tls_group_allowed(s, group_id,
+                                                 SSL_SECOP_CURVE_SUPPORTED)
+                            && tls_valid_group(s, group_id, TLS1_3_VERSION,
+                                               TLS1_3_VERSION, 0, NULL)
                  */
                 for (i = 0; i < num_groups; i++) {
                     group_id = pgroups[i];
 
                     if (check_in_list(s, group_id, clntgroups, clnt_num_groups,
                                       1)
-                            && tls_group_allowed(s, group_id,
-                                                 SSL_SECOP_CURVE_SUPPORTED)
-                            && tls_valid_group(s, group_id, TLS1_3_VERSION,
-                                               TLS1_3_VERSION, 0, NULL))
+                            ){
+                        printf("zzzz\n");
                         break;
+                    }
                 }
 
                 if (i < num_groups) {

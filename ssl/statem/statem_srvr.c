@@ -70,6 +70,7 @@ static int ossl_statem_server13_read_transition(SSL_CONNECTION *s, int mt)
      * not negotiated TLSv1.3 yet, so that case is handled by
      * ossl_statem_server_read_transition()
      */
+  //  printf("aaaaaa %d\n",st -> hand_state);
     switch (st->hand_state) {
     default:
         break;
@@ -107,6 +108,7 @@ static int ossl_statem_server13_read_transition(SSL_CONNECTION *s, int mt)
         } else {
             if (mt == SSL3_MT_FINISHED) {
                 st->hand_state = TLS_ST_SR_FINISHED;
+                s->early_data_state = SSL_DNS_FINISHED_READING2;
                 return 1;
             }
         }
@@ -161,6 +163,19 @@ static int ossl_statem_server13_read_transition(SSL_CONNECTION *s, int mt)
             return 1;
         }
         break;
+
+    case TLS_ST_SR_CLNT_HELLO:
+            printf("received state is TLS_ST_SR_CLNT_HELLO\n");
+            if(s->early_data_state == SSL_DNS_CCS){
+                s->early_data_state = SSL_DNS_FINISHED_READING;
+                st->hand_state = TLS_ST_SR_DNS_FINISHED_APPLICATION;
+                return 1;
+                break;
+            }
+            st->hand_state = TLS_ST_SR_CHANGE;
+            return 1;
+            break;
+                
     }
 
     /* No valid transition found */
@@ -343,6 +358,181 @@ int ossl_statem_server_read_transition(SSL_CONNECTION *s, int mt)
  *   1: Yes
  *   0: No
  */
+int ossl_statem_server_read_transition_reduce(SSL_CONNECTION *s, int mt) {
+    
+    OSSL_STATEM *st = &s->statem;
+
+    if (SSL_CONNECTION_IS_TLS13(s)) {
+        printf("(ossl_statem_reduce) tls13 now\n");
+        if (!ossl_statem_server13_read_transition(s, mt))
+            goto err;
+        return 1;
+    }
+    printf("ossl_statem hand state: %d\n",st->hand_state);
+    switch (st->hand_state) {
+        default:
+            break;
+
+        case TLS_ST_BEFORE:
+            printf("TLS_ST_BEFORE\n");
+        case TLS_ST_OK:
+        case DTLS_ST_SW_HELLO_VERIFY_REQUEST:
+            if (mt == SSL3_MT_CLIENT_HELLO) {
+                printf("SSL3_MT_CLIENT_HELLO\n");
+                st->hand_state = TLS_ST_SR_CLNT_HELLO;
+                return 1;
+            }
+            break;
+
+        case TLS_ST_SW_SRVR_DONE:
+/*
+ * If we get a CKE message after a ServerDone then either
+ * 1) We didn't request a Certificate
+ * OR
+ * 2) If we did request one then
+ *      a) We allow no Certificate to be returned
+ *      AND
+ *      b) We are running SSL3 (in TLS1.0+ the client must return a 0
+ *         list if we requested a certificate)
+ */
+            if (mt == SSL3_MT_CLIENT_KEY_EXCHANGE) {
+                if (s->s3.tmp.cert_request) {
+                    if (s->version == SSL3_VERSION) {
+                        if ((s->verify_mode & SSL_VERIFY_PEER)
+                            && (s->verify_mode & SSL_VERIFY_FAIL_IF_NO_PEER_CERT)) {
+/*
+ * This isn't an unexpected message as such - we're just
+ * not going to accept it because we require a client
+ * cert.
+ */
+                            SSLfatal(s, SSL_AD_HANDSHAKE_FAILURE,
+                                     SSL_R_PEER_DID_NOT_RETURN_A_CERTIFICATE);
+                            return 0;
+                        }
+                        st->hand_state = TLS_ST_SR_KEY_EXCH;
+                        return 1;
+                    }
+                } else {
+                    st->
+                            hand_state = TLS_ST_SR_KEY_EXCH;
+                    return 1;
+                }
+            } else if (s->s3.tmp.cert_request) {
+                if (mt == SSL3_MT_CERTIFICATE) {
+                    st->
+                            hand_state = TLS_ST_SR_CERT;
+                    return 1;
+                }
+            }
+            break;
+
+        case TLS_ST_SR_CERT:
+            if (mt == SSL3_MT_CLIENT_KEY_EXCHANGE) {
+                st->
+                        hand_state = TLS_ST_SR_KEY_EXCH;
+                return 1;
+            }
+            break;
+
+        case TLS_ST_SR_KEY_EXCH:
+/*
+ * We should only process a CertificateVerify message if we have
+ * received a Certificate from the client. If so then |s->session->peer|
+ * will be non NULL. In some instances a CertificateVerify message is
+ * not required even if the peer has sent a Certificate (e.g. such as in
+ * the case of static DH). In that case |st->no_cert_verify| should be
+ * set.
+ */
+            if (s->session->peer == NULL || st->no_cert_verify) {
+                if (mt == SSL3_MT_CHANGE_CIPHER_SPEC) {
+/*
+ * For the ECDH ciphersuites when the client sends its ECDH
+ * pub key in a certificate, the CertificateVerify message is
+ * not sent. Also for GOST ciphersuites when the client uses
+ * its key from the certificate for key exchange.
+ */
+                    st->
+                            hand_state = TLS_ST_SR_CHANGE;
+                    return 1;
+                }
+            } else {
+                if (mt == SSL3_MT_CERTIFICATE_VERIFY) {
+                    st->
+                            hand_state = TLS_ST_SR_CERT_VRFY;
+                    return 1;
+                }
+            }
+            break;
+
+        case TLS_ST_SR_CERT_VRFY:
+            if (mt == SSL3_MT_CHANGE_CIPHER_SPEC) {
+                st->
+                        hand_state = TLS_ST_SR_CHANGE;
+                return 1;
+            }
+            break;
+
+        case TLS_ST_SR_CHANGE:
+#ifndef OPENSSL_NO_NEXTPROTONEG
+            if (s->s3.npn_seen) {
+                if (mt == SSL3_MT_NEXT_PROTO) {
+                    st->
+                            hand_state = TLS_ST_SR_NEXT_PROTO;
+                    return 1;
+                }
+            } else {
+#endif
+                if (mt == SSL3_MT_FINISHED) {
+                    st->
+                            hand_state = TLS_ST_SR_FINISHED;
+                    return 1;
+                }
+#ifndef OPENSSL_NO_NEXTPROTONEG
+            }
+#endif
+            break;
+
+#ifndef OPENSSL_NO_NEXTPROTONEG
+        case TLS_ST_SR_NEXT_PROTO:
+            if (mt == SSL3_MT_FINISHED) {
+                st->
+                        hand_state = TLS_ST_SR_FINISHED;
+                return 1;
+            }
+            break;
+#endif
+
+        case TLS_ST_SW_FINISHED:
+            if (mt == SSL3_MT_CHANGE_CIPHER_SPEC) {
+                st->
+                        hand_state = TLS_ST_SR_CHANGE;
+                return 1;
+            }
+            break;
+    }
+
+    err:
+/* No valid transition found */
+    if (SSL_CONNECTION_IS_DTLS(s) && mt == SSL3_MT_CHANGE_CIPHER_SPEC) {
+        BIO *rbio;
+
+/*
+ * CCS messages don't have a message sequence number so this is probably
+ * because of an out-of-order CCS. We'll just drop it.
+ */
+        s->
+                init_num = 0;
+        s->
+                rwstate = SSL_READING;
+        rbio = SSL_get_rbio(SSL_CONNECTION_GET_SSL(s));
+        BIO_clear_retry_flags(rbio);
+        BIO_set_retry_read(rbio);
+        return 0;
+    }
+    SSLfatal(s, SSL3_AD_UNEXPECTED_MESSAGE, SSL_R_UNEXPECTED_MESSAGE);
+    return 0;
+}
+
 static int send_server_key_exchange(SSL_CONNECTION *s)
 {
     unsigned long alg_k = s->s3.tmp.new_cipher->algorithm_mkey;
@@ -469,7 +659,7 @@ static WRITE_TRAN ossl_statem_server13_write_transition(SSL_CONNECTION *s)
      * No case for TLS_ST_BEFORE, because at that stage we have not negotiated
      * TLSv1.3 yet, so that is handled by ossl_statem_server_write_transition()
      */
-
+    printf("st-> hand_state in ossl_statem_server13_write_transition: %d\n",st->hand_state);
     switch (st->hand_state) {
     default:
         /* Shouldn't happen */
@@ -491,7 +681,7 @@ static WRITE_TRAN ossl_statem_server13_write_transition(SSL_CONNECTION *s)
         }
         /* Try to read from the client instead */
         return WRITE_TRAN_FINISHED;
-
+    case TLS_ST_SR_DNS_FINISHED_APPLICATION:
     case TLS_ST_SR_CLNT_HELLO:
         st->hand_state = TLS_ST_SW_SRVR_HELLO;
         return WRITE_TRAN_CONTINUE;
@@ -546,8 +736,30 @@ static WRITE_TRAN ossl_statem_server13_write_transition(SSL_CONNECTION *s)
         return WRITE_TRAN_CONTINUE;
 
     case TLS_ST_SW_FINISHED:
+        if(s->early_data_state == SSL_DNS_FINISHED_WRITING){
+                if (s->post_handshake_auth == SSL_PHA_REQUESTED) {
+                    s->post_handshake_auth = SSL_PHA_EXT_RECEIVED;
+                } else if (!s->ext.ticket_expected) {
+                    /*
+                     * If we're not going to renew the ticket then we just finish the
+                     * handshake at this point.
+                     */
+                    st->hand_state = TLS_ST_OK;
+                    return WRITE_TRAN_CONTINUE;
+                }
+                s->early_data_state = SSL_DNS_FINISHED_READING2;
+                return WRITE_TRAN_FINISHED;
+                if (s->num_tickets > s->sent_tickets)
+                    st->hand_state = TLS_ST_SW_SESSION_TICKET;
+                else{
+
+                    st->hand_state = TLS_ST_OK;
+
+                }
+            }else{
         st->hand_state = TLS_ST_EARLY_DATA;
         s->ts_msg_write = ossl_time_now();
+        }
         return WRITE_TRAN_CONTINUE;
 
     case TLS_ST_EARLY_DATA:
@@ -974,6 +1186,7 @@ WORK_STATE ossl_statem_server_post_work(SSL_CONNECTION *s, WORK_STATE wst)
              * is an unencrypted alert, an encrypted alert, or an encrypted
              * handshake message. We temporarily tolerate unencrypted alerts.
              */
+            s->statem.enc_read_state = ENC_READ_STATE_ALLOW_PLAIN_ALERTS;
             if (s->rlayer.rrlmethod->set_plain_alerts != NULL)
                 s->rlayer.rrlmethod->set_plain_alerts(s->rlayer.rrl, 1);
             break;
@@ -1249,6 +1462,7 @@ size_t ossl_statem_server_max_message_size(SSL_CONNECTION *s)
     case TLS_ST_SR_CHANGE:
         return CCS_MAX_LENGTH;
 
+    case TLS_ST_SR_DNS_FINISHED_APPLICATION:    
     case TLS_ST_SR_FINISHED:
         return FINISHED_MAX_LENGTH;
 
@@ -1312,6 +1526,50 @@ MSG_PROCESS_RETURN ossl_statem_server_process_message(SSL_CONNECTION *s,
  * Perform any further processing required following the receipt of a message
  * from the client
  */
+
+MSG_PROCESS_RETURN ossl_statem_server_process_message_reduce(SSL_CONNECTION *s, PACKET *pkt) {
+    OSSL_STATEM *st = &s->statem;
+    printf("ssl_statem_server_process_message_reduce st->hand_state: %d\n",st->hand_state);
+    switch (st->hand_state) {
+        default:
+            /* Shouldn't happen */
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+            return MSG_PROCESS_ERROR;
+
+        case TLS_ST_SR_CLNT_HELLO:
+            return tls_process_client_hello(s, pkt);
+
+        case TLS_ST_SR_END_OF_EARLY_DATA:
+            return tls_process_end_of_early_data(s, pkt);
+
+        case TLS_ST_SR_CERT:
+            return tls_process_client_certificate(s, pkt);
+
+        case TLS_ST_SR_KEY_EXCH:
+            return tls_process_client_key_exchange(s, pkt);
+
+        case TLS_ST_SR_CERT_VRFY:
+            return tls_process_cert_verify(s, pkt);
+
+#ifndef OPENSSL_NO_NEXTPROTONEG
+        case TLS_ST_SR_NEXT_PROTO:
+            return tls_process_next_proto(s, pkt);
+#endif
+
+        case TLS_ST_SR_CHANGE:
+            return tls_process_change_cipher_spec(s, pkt);
+
+        case TLS_ST_SR_DNS_FINISHED_APPLICATION:
+        case TLS_ST_SR_FINISHED:
+            return tls_process_finished(s, pkt);
+
+        case TLS_ST_SR_KEY_UPDATE:
+            return tls_process_key_update(s, pkt);
+
+    }
+}
+
+
 WORK_STATE ossl_statem_server_post_process_message(SSL_CONNECTION *s,
                                                    WORK_STATE wst)
 {
@@ -1328,6 +1586,23 @@ WORK_STATE ossl_statem_server_post_process_message(SSL_CONNECTION *s,
 
     case TLS_ST_SR_KEY_EXCH:
         return tls_post_process_client_key_exchange(s, wst);
+    }
+}
+
+WORK_STATE ossl_statem_server_post_process_message_reduce(SSL_CONNECTION *s, WORK_STATE wst) {
+    OSSL_STATEM *st = &s->statem;
+    printf("\npost_process_message: %d\n", st->hand_state);
+    switch (st->hand_state) {
+        default:
+            /* Shouldn't happen */
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+            return WORK_ERROR;
+
+        case TLS_ST_SR_CLNT_HELLO:
+            return tls_post_process_client_hello_reduce(s, wst);
+
+        case TLS_ST_SR_KEY_EXCH:
+            return tls_post_process_client_key_exchange(s, wst);
     }
 }
 
@@ -1477,6 +1752,7 @@ MSG_PROCESS_RETURN tls_process_client_hello(SSL_CONNECTION *s, PACKET *pkt)
 
     /* Check if this is actually an unexpected renegotiation ClientHello */
     if (s->renegotiate == 0 && !SSL_IS_FIRST_HANDSHAKE(s)) {
+        printf("renegotiate run\n");
         if (!ossl_assert(!SSL_CONNECTION_IS_TLS13(s))) {
             SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
             goto err;
@@ -1502,6 +1778,7 @@ MSG_PROCESS_RETURN tls_process_client_hello(SSL_CONNECTION *s, PACKET *pkt)
      * First, parse the raw ClientHello data into the CLIENTHELLO_MSG structure.
      */
     clienthello->isv2 = RECORD_LAYER_is_sslv2_record(&s->rlayer);
+    printf("clienthello->isv2: %d\n",clienthello->isv2);
     PACKET_null_init(&cookie);
 
     if (clienthello->isv2) {
@@ -1516,7 +1793,7 @@ MSG_PROCESS_RETURN tls_process_client_hello(SSL_CONNECTION *s, PACKET *pkt)
         /*-
          * An SSLv3/TLSv1 backwards-compatible CLIENT-HELLO in an SSLv2
          * header is sent directly on the wire, not wrapped as a TLS
-         * record. Our record layer just processes the message length and passes
+         * record. Our record layer just processes the message l21ength and passes
          * the rest right through. Its format is:
          * Byte  Content
          * 0-1   msg_length - decoded by the record layer
@@ -1682,6 +1959,7 @@ MSG_PROCESS_RETURN tls_process_client_hello(SSL_CONNECTION *s, PACKET *pkt)
 
 static int tls_early_post_process_client_hello(SSL_CONNECTION *s)
 {
+    //printf("tls_early_post_process_client_hello\n");
     unsigned int j;
     int i, al = SSL_AD_INTERNAL_ERROR;
     int protverr;
@@ -1701,6 +1979,7 @@ static int tls_early_post_process_client_hello(SSL_CONNECTION *s)
     /* Finished parsing the ClientHello, now we can start processing it */
     /* Give the ClientHello callback a crack at things */
     if (sctx->client_hello_cb != NULL) {
+        printf("bbbb\n");
         /* A failure in the ClientHello callback terminates the connection. */
         switch (sctx->client_hello_cb(ssl, &al, sctx->client_hello_cb_arg)) {
         case SSL_CLIENT_HELLO_SUCCESS:
@@ -1721,6 +2000,7 @@ static int tls_early_post_process_client_hello(SSL_CONNECTION *s)
     /* Choose the version */
 
     if (clienthello->isv2) {
+        printf("cccc\n");
         if (clienthello->legacy_version == SSL2_VERSION
                 || (clienthello->legacy_version & 0xff00)
                    != (SSL3_VERSION_MAJOR << 8)) {
@@ -1755,6 +2035,7 @@ static int tls_early_post_process_client_hello(SSL_CONNECTION *s)
         SSLfatal(s, SSL_AD_PROTOCOL_VERSION, protverr);
         goto err;
     }
+
 
     /* TLSv1.3 specifies that a ClientHello must end on a record boundary */
     if (SSL_CONNECTION_IS_TLS13(s)
@@ -1806,10 +2087,12 @@ static int tls_early_post_process_client_hello(SSL_CONNECTION *s)
     s->s3.send_connection_binding = 0;
     /* Check what signalling cipher-suite values were received. */
     if (scsvs != NULL) {
+       // printf("\nscsvs\n");
         for (i = 0; i < sk_SSL_CIPHER_num(scsvs); i++) {
             c = sk_SSL_CIPHER_value(scsvs, i);
             if (SSL_CIPHER_get_id(c) == SSL3_CK_SCSV) {
-                if (s->renegotiate) {
+       //         printf("\nscsvs2\n");
+                if (s->renegotiate) { 
                     /* SCSV is fatal if renegotiating */
                     SSLfatal(s, SSL_AD_HANDSHAKE_FAILURE,
                              SSL_R_SCSV_RECEIVED_WHEN_RENEGOTIATING);
@@ -1818,6 +2101,7 @@ static int tls_early_post_process_client_hello(SSL_CONNECTION *s)
                 s->s3.send_connection_binding = 1;
             } else if (SSL_CIPHER_get_id(c) == SSL3_CK_FALLBACK_SCSV &&
                        !ssl_check_version_downgrade(s)) {
+                printf("\nscsvs3\n");
                 /*
                  * This SCSV indicates that the client previously tried
                  * a higher version.  We should fail if the current version
@@ -1834,6 +2118,7 @@ static int tls_early_post_process_client_hello(SSL_CONNECTION *s)
 
     /* For TLSv1.3 we must select the ciphersuite *before* session resumption */
     if (SSL_CONNECTION_IS_TLS13(s)) {
+      //  printf("thisis tls 13131313\n");
         const SSL_CIPHER *cipher =
             ssl3_choose_cipher(s, ciphers, SSL_get_ciphers(ssl));
 
@@ -2286,7 +2571,8 @@ int tls_handle_alpn(SSL_CONNECTION *s)
 }
 
 WORK_STATE tls_post_process_client_hello(SSL_CONNECTION *s, WORK_STATE wst)
-{
+{   
+    printf("enterd to tls_post_process_client_hello\n");
     const SSL_CIPHER *cipher;
     SSL *ssl = SSL_CONNECTION_GET_SSL(s);
 
@@ -2514,6 +2800,234 @@ CON_FUNC_RETURN tls_construct_server_hello(SSL_CONNECTION *s, WPACKET *pkt)
 
     return CON_FUNC_SUCCESS;
 }
+
+WORK_STATE tls_post_process_client_hello_reduce(SSL_CONNECTION *s, WORK_STATE wst) {
+    printf("enterd to tls_post_process_client_hello_reduce\n");
+    const SSL_CIPHER *cipher;
+    SSL *ssl = SSL_CONNECTION_GET_SSL(s);
+    printf("early_data_state: %d\n", s->early_data_state);
+    int BUF_SIZE = 100;
+    char buf[BUF_SIZE];
+
+    if (wst == WORK_MORE_A) {
+        printf("work more a\n");
+        int rv = tls_early_post_process_client_hello(s);
+        if (rv == 0) {
+            /* SSLfatal() was already called */
+            goto err;
+        }
+        if (rv < 0)
+            return WORK_MORE_A;
+        wst = WORK_MORE_B;
+    }
+    if (wst == WORK_MORE_B) {
+        printf("work more b\n");
+        if (!s->hit || SSL_CONNECTION_IS_TLS13(s)) {
+                        printf("work more b scope\n");
+            /* Let cert callback update server certificates if required */
+            if (!s->hit && s->cert->cert_cb != NULL) {
+                printf("its not reused session and cert_cb is not NULL\n");
+                int rv = s->cert->cert_cb(ssl, s->cert->cert_cb_arg);
+                if (rv == 0) {
+                    SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_R_CERT_CB_ERROR);
+                    goto err;
+                }
+                if (rv < 0) {
+                    s->rwstate = SSL_X509_LOOKUP;
+                    return WORK_MORE_B;
+                }
+                s->rwstate = SSL_NOTHING;
+            }
+
+            /* In TLSv1.3 we selected the ciphersuite before resumption */
+            if (!SSL_CONNECTION_IS_TLS13(s)) {
+                cipher =
+                        ssl3_choose_cipher(s, s->peer_ciphers, SSL_get_ciphers(ssl));
+
+                if (cipher == NULL) {
+                    SSLfatal(s, SSL_AD_HANDSHAKE_FAILURE,
+                             SSL_R_NO_SHARED_CIPHER);
+                    goto err;
+                }
+                s->s3.tmp.new_cipher = cipher;
+            }
+            if (!s->hit) {
+                if (!tls_choose_sigalg(s, 1)) {
+                    printf("choose_sigalg\n");
+                    /* SSLfatal already called */
+                    goto err;
+                }
+                /* check whether we should disable session resumption */
+                if (s->not_resumable_session_cb != NULL)
+                    s->session->not_resumable =
+                            s->not_resumable_session_cb(ssl,
+                                                        ((s->s3.tmp.new_cipher->algorithm_mkey
+                                                        & (SSL_kDHE | SSL_kECDHE)) != 0));
+                if (s->session->not_resumable)
+                    /* do not send a session ticket */
+                    s->ext.ticket_expected = 0;
+            }
+        } else {
+            /* Session-id reuse */
+            s->s3.tmp.new_cipher = s->session->cipher;
+        }
+
+        /*-
+         * we now have the following setup.
+         * client_random
+         * cipher_list          - our preferred list of ciphers
+         * ciphers              - the clients preferred list of ciphers
+         * compression          - basically ignored right now
+         * ssl version is set   - sslv3
+         * s->session           - The ssl session has been setup.
+         * s->hit               - session reuse flag
+         * s->s3.tmp.new_cipher - the new cipher to use.
+         */
+
+        /*
+         * Call status_request callback if needed. Has to be done after the
+         * certificate callbacks etc above.
+         */
+        if (!tls_handle_status_request(s)) {
+            /* SSLfatal() already called */
+            goto err;
+        }
+        /*
+         * Call alpn_select callback if needed.  Has to be done after SNI and
+         * cipher negotiation (HTTP/2 restricts permitted ciphers). In TLSv1.3
+         * we already did this because cipher negotiation happens earlier, and
+         * we must handle ALPN before we decide whether to accept early_data.
+         */
+        if (!SSL_CONNECTION_IS_TLS13(s) && !tls_handle_alpn(s)) {
+            /* SSLfatal() already called */
+            goto err;
+        }
+
+        wst = WORK_MORE_C;
+    }
+#ifndef OPENSSL_NO_SRP
+    if (wst == WORK_MORE_C) {
+        printf("work more c\n");
+        int ret;
+        if ((ret = ssl_check_srp_ext_ClientHello(s)) == 0) {
+            /*
+             * callback indicates further work to be done
+             */
+            s->rwstate = SSL_X509_LOOKUP;
+            return WORK_MORE_C;
+        }
+        if (ret < 0) {
+            /* SSLfatal() already called */
+            goto err;
+        }
+    }
+#endif
+    if(s->early_data_state == SSL_DNS_CCS){
+        printf("fix the server's ecdhe keyshare\n");
+#include <time.h>
+        printf("    read server's ecdhe keyshare from file ");
+        struct timespec begin;
+        clock_gettime(CLOCK_MONOTONIC, &begin);
+        printf(": %f\n",(begin.tv_sec) + (begin.tv_nsec) / 1000000000.0);
+        unsigned char *encodedPoint;
+        size_t encoded_pt_len = 0;
+        EVP_PKEY *ckey = s->s3.peer_tmp, *skey = NULL, *skey1 = NULL;
+        FILE *f;
+        f = fopen("dns/keyshare/privKey.pem", "rb");
+        PEM_read_PrivateKey(f, &skey, NULL, NULL);
+        fclose(f);
+        //printf("read pem done!\n");
+
+        if (skey == NULL) {
+            printf("skey is NULL\n");
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_MALLOC_FAILURE);
+            goto err;
+        }
+        ASN1_PCTX *ctx = ASN1_PCTX_new();  //for printing pubkey
+        BIO *bio2 = BIO_new_fp(stdout, BIO_NOCLOSE);//for printing pubkey
+        encoded_pt_len = EVP_PKEY_get1_encoded_public_key(skey, &encodedPoint);
+        printf("encoded_pt_len: ");
+        EVP_PKEY_get1_encoded_public_key(skey, &encodedPoint);
+        printf("pubkey from client: ");
+        EVP_PKEY_print_public(bio2, ckey, 1, NULL); //for printing pubkey
+        BIO_free(bio2);
+        if (encoded_pt_len == 0) {
+            printf("\nencoded_pt_len is NULL\n");
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_EC_LIB);
+            EVP_PKEY_free(skey);
+            goto err;
+        }
+
+        /*
+             * This causes the crypto state to be updated based on the derived keys
+             */
+        s->s3.tmp.pkey = skey;
+        if (ssl_derive(s, skey, ckey, 1) == 0) {
+            printf("ssl_derive\n");
+            /* SSLfatal() already called */
+            goto err;
+        }
+        printf("\nssl_derive finished\n");
+    }
+    if(s->early_data_state == SSL_DNS_CCS){
+        // change cipher state) handshake||server_write
+        if (!ssl->method->ssl3_enc->setup_key_block(s)
+        || !ssl->method->ssl3_enc->change_cipher_state(s,
+                                                     SSL3_CC_HANDSHAKE | SSL3_CHANGE_CIPHER_SERVER_READ)) {
+            printf("setup_key_block or change_cipher_state is goes bad!!\n");
+            /* SSLfatal() already called */
+            goto err;
+        }
+    }
+    // store the previous SSL*s to reset the cipher state
+//    if(s->early_data_state == SSL_DNS_CCS){
+//        SSL tmp = *s;
+//
+//        // change cipher state) handshake||server_write
+//        if (!s->method->ssl3_enc->setup_key_block(s)
+//        || !s->method->ssl3_enc->change_cipher_state(s,
+//                                                     SSL3_CC_HANDSHAKE | SSL3_CHANGE_CIPHER_SERVER_WRITE)) {
+//            /* SSLfatal() already called */
+//            goto err;
+//        }
+//
+//        // change cipher state) application||server_read
+//        size_t dummy;
+//        if (!s->method->ssl3_enc->generate_master_secret(s,
+//                                                         s->master_secret, s->handshake_secret, 0,
+//                                                         &dummy)
+//                                                         || !tls13_change_cipher_state(s,
+//                                                                                       SSL3_CC_APPLICATION | SSL3_CHANGE_CIPHER_SERVER_READ))
+//            /* SSLfatal() already called */
+//            goto err;
+//
+//            // server read application data sent by client
+//            //    buf[100];
+        SSL_read(ssl, buf, 100);
+        printf("Client->Server DNS application data\n");
+        printf("buf : %s\n", buf);
+//
+//
+//
+//        // load the tmp to reset the cipher state
+//        *s = tmp;
+//    }
+
+//    return WORK_FINISHED_STOP;
+    if(s->early_data_state == SSL_DNS_CCS){
+        printf("WORK_FINISHED_CONTINUE go\n");
+        return WORK_FINISHED_CONTINUE;
+    }
+    else{
+        printf("WORK_FINISHED_STOP\n");
+        return WORK_FINISHED_STOP;
+    }
+
+    err:
+    return WORK_ERROR;
+}
+
+
 
 CON_FUNC_RETURN tls_construct_server_done(SSL_CONNECTION *s, WPACKET *pkt)
 {
@@ -4418,4 +4932,497 @@ MSG_PROCESS_RETURN tls_process_end_of_early_data(SSL_CONNECTION *s, PACKET *pkt)
     }
 
     return MSG_PROCESS_CONTINUE_READING;
+}
+
+WRITE_TRAN ossl_statem_server_write_transition_reduce(SSL_CONNECTION *s) {
+    OSSL_STATEM *st = &s->statem;
+
+    /*
+     * Note that before the ClientHello we don't know what version we are going
+     * to negotiate yet, so we don't take this branch until later
+     */
+
+    if (SSL_CONNECTION_IS_TLS13(s))
+        return ossl_statem_server13_write_transition(s);
+    printf("tarnsition at write ::: st->hand_state: %d\n", st->hand_state);
+    switch (st->hand_state) {
+        default:
+            /* Shouldn't happen */
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+            return WRITE_TRAN_ERROR;
+
+        case TLS_ST_OK:
+            if (st->request_state == TLS_ST_SW_HELLO_REQ) {
+                /* We must be trying to renegotiate */
+                st->hand_state = TLS_ST_SW_HELLO_REQ;
+                st->request_state = TLS_ST_BEFORE;
+                return WRITE_TRAN_CONTINUE;
+            }
+            /* Must be an incoming ClientHello */
+            if (!tls_setup_handshake(s)) {
+                /* SSLfatal() already called */
+                return WRITE_TRAN_ERROR;
+            }
+            /* Fall through */
+
+        case TLS_ST_BEFORE:
+            /* Just go straight to trying to read from the client */
+            return WRITE_TRAN_FINISHED;
+
+        case TLS_ST_SW_HELLO_REQ:
+            st->hand_state = TLS_ST_OK;
+            return WRITE_TRAN_CONTINUE;
+
+        case TLS_ST_SR_CLNT_HELLO:
+            if (SSL_CONNECTION_IS_DTLS(s) && !s->d1->cookie_verified
+                && (SSL_get_options(SSL_CONNECTION_GET_SSL(s)) & SSL_OP_COOKIE_EXCHANGE)) {
+                st->hand_state = DTLS_ST_SW_HELLO_VERIFY_REQUEST;
+            } else if (s->renegotiate == 0 && !SSL_IS_FIRST_HANDSHAKE(s)) {
+                /* We must have rejected the renegotiation */
+                st->hand_state = TLS_ST_OK;
+                return WRITE_TRAN_CONTINUE;
+            } else {
+                st->hand_state = TLS_ST_SW_SRVR_HELLO;
+            }
+            return WRITE_TRAN_CONTINUE;
+
+        case DTLS_ST_SW_HELLO_VERIFY_REQUEST:
+            return WRITE_TRAN_FINISHED;
+
+        case TLS_ST_SW_SRVR_HELLO:
+            if (s->hit) {
+                if (s->ext.ticket_expected)
+                    st->hand_state = TLS_ST_SW_SESSION_TICKET;
+                else
+                    st->hand_state = TLS_ST_SW_CHANGE;
+            } else {
+                /* Check if it is anon DH or anon ECDH, */
+                /* normal PSK or SRP */
+                if (!(s->s3.tmp.new_cipher->algorithm_auth &
+                      (SSL_aNULL | SSL_aSRP | SSL_aPSK))) {
+                    st->hand_state = TLS_ST_SW_CERT;
+                } else if (send_server_key_exchange(s)) {
+                    st->hand_state = TLS_ST_SW_KEY_EXCH;
+                } else if (send_certificate_request(s)) {
+                    st->hand_state = TLS_ST_SW_CERT_REQ;
+                } else {
+                    st->hand_state = TLS_ST_SW_SRVR_DONE;
+                }
+            }
+            return WRITE_TRAN_CONTINUE;
+
+        case TLS_ST_SW_CERT:
+            if (s->ext.status_expected) {
+                st->hand_state = TLS_ST_SW_CERT_STATUS;
+                return WRITE_TRAN_CONTINUE;
+            }
+            /* Fall through */
+
+        case TLS_ST_SW_CERT_STATUS:
+            if (send_server_key_exchange(s)) {
+                st->hand_state = TLS_ST_SW_KEY_EXCH;
+                return WRITE_TRAN_CONTINUE;
+            }
+            /* Fall through */
+
+        case TLS_ST_SW_KEY_EXCH:
+            if (send_certificate_request(s)) {
+                st->hand_state = TLS_ST_SW_CERT_REQ;
+                return WRITE_TRAN_CONTINUE;
+            }
+            /* Fall through */
+
+        case TLS_ST_SW_CERT_REQ:
+            st->hand_state = TLS_ST_SW_SRVR_DONE;
+            return WRITE_TRAN_CONTINUE;
+
+        case TLS_ST_SW_SRVR_DONE:
+            return WRITE_TRAN_FINISHED;
+
+        case TLS_ST_SR_FINISHED:
+            if (s->hit) {
+                st->hand_state = TLS_ST_OK;
+                return WRITE_TRAN_CONTINUE;
+            } else if (s->ext.ticket_expected) {
+                st->hand_state = TLS_ST_SW_SESSION_TICKET;
+            } else {
+                st->hand_state = TLS_ST_SW_CHANGE;
+            }
+            return WRITE_TRAN_CONTINUE;
+
+        case TLS_ST_SW_SESSION_TICKET:
+            st->hand_state = TLS_ST_SW_CHANGE;
+            return WRITE_TRAN_CONTINUE;
+
+        case TLS_ST_SW_CHANGE:
+            st->hand_state = TLS_ST_SW_FINISHED;
+            return WRITE_TRAN_CONTINUE;
+
+        case TLS_ST_SW_FINISHED:
+            if (s->hit) {
+                return WRITE_TRAN_FINISHED;
+            }
+            st->hand_state = TLS_ST_OK;
+            return WRITE_TRAN_CONTINUE;
+    }
+}
+
+WORK_STATE ossl_statem_server_pre_work_reduce(SSL_CONNECTION *s, WORK_STATE wst) {
+    OSSL_STATEM *st = &s->statem;
+    SSL *ssl = SSL_CONNECTION_GET_SSL(s);
+
+    switch (st->hand_state) {
+        default:
+            /* No pre work to be done */
+            break;
+
+        case TLS_ST_SW_HELLO_REQ:
+            s->shutdown = 0;
+            if (SSL_CONNECTION_IS_DTLS(s))
+                dtls1_clear_sent_buffer(s);
+            break;
+
+        case DTLS_ST_SW_HELLO_VERIFY_REQUEST:
+            s->shutdown = 0;
+            if (SSL_CONNECTION_IS_DTLS(s)) {
+                dtls1_clear_sent_buffer(s);
+                /* We don't buffer this message so don't use the timer */
+                st->use_timer = 0;
+            }
+            break;
+
+        case TLS_ST_SW_SRVR_HELLO:
+            if (SSL_CONNECTION_IS_DTLS(s)) {
+                /*
+                 * Messages we write from now on should be buffered and
+                 * retransmitted if necessary, so we need to use the timer now
+                 */
+                st->use_timer = 1;
+            }
+            break;
+
+        case TLS_ST_SW_SRVR_DONE:
+#ifndef OPENSSL_NO_SCTP
+            if (SSL_CONNECTION_IS_DTLS(s) && BIO_dgram_is_sctp(SSL_get_wbio(s))) {
+                /* Calls SSLfatal() as required */
+                return dtls_wait_for_dry(s);
+            }
+#endif
+            return WORK_FINISHED_CONTINUE;
+
+        case TLS_ST_SW_SESSION_TICKET:
+            if (SSL_CONNECTION_IS_TLS13(s) && s->sent_tickets == 0
+                && s->ext.extra_tickets_expected == 0) {
+                /*
+                 * Actually this is the end of the handshake, but we're going
+                 * straight into writing the session ticket out. So we finish off
+                 * the handshake, but keep the various buffers active.
+                 *
+                 * Calls SSLfatal as required.
+                 */
+                return tls_finish_handshake(s, wst, 0, 0);
+            }
+            if (SSL_CONNECTION_IS_DTLS(s)) {
+                /*
+                 * We're into the last flight. We don't retransmit the last flight
+                 * unless we need to, so we don't use the timer
+                 */
+                st->use_timer = 0;
+            }
+            break;
+
+        case TLS_ST_SW_CHANGE:
+            if (SSL_CONNECTION_IS_TLS13(s))
+                break;
+            /* Writes to s->session are only safe for initial handshakes */
+            if (s->session->cipher == NULL) {
+                s->session->cipher = s->s3.tmp.new_cipher;
+            } else if (s->session->cipher != s->s3.tmp.new_cipher) {
+                SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+                return WORK_ERROR;
+            }
+            if (!ssl->method->ssl3_enc->setup_key_block(s)) {
+                /* SSLfatal() already called */
+                return WORK_ERROR;
+            }
+            if (SSL_CONNECTION_IS_DTLS(s)) {
+                /*
+                 * We're into the last flight. We don't retransmit the last flight
+                 * unless we need to, so we don't use the timer. This might have
+                 * already been set to 0 if we sent a NewSessionTicket message,
+                 * but we'll set it again here in case we didn't.
+                 */
+                st->use_timer = 0;
+            }
+            return WORK_FINISHED_CONTINUE;
+
+        case TLS_ST_EARLY_DATA:
+            if (s->early_data_state != SSL_EARLY_DATA_ACCEPTING
+                && (s->s3.flags & TLS1_FLAGS_STATELESS) == 0)
+                return WORK_FINISHED_CONTINUE;
+            /* Fall through */
+
+        case TLS_ST_OK:
+            /* Calls SSLfatal() as required */
+            return tls_finish_handshake(s, wst, 1, 1);
+    }
+
+    return WORK_FINISHED_CONTINUE;
+}
+
+WORK_STATE ossl_statem_server_post_work_reduce(SSL_CONNECTION *s, WORK_STATE wst) {
+    OSSL_STATEM *st = &s->statem;
+    SSL *ssl = SSL_CONNECTION_GET_SSL(s);
+    SSL tmp;
+
+    s->init_num = 0;
+
+    switch (st->hand_state) {
+        default:
+            /* No post work to be done */
+
+            break;
+
+        case TLS_ST_SW_HELLO_REQ:
+            if (statem_flush(s) != 1)
+                return WORK_MORE_A;
+            if (!ssl3_init_finished_mac(s)) {
+                /* SSLfatal() already called */
+                return WORK_ERROR;
+            }
+            break;
+
+        case DTLS_ST_SW_HELLO_VERIFY_REQUEST:
+            if (statem_flush(s) != 1)
+                return WORK_MORE_A;
+            /* HelloVerifyRequest resets Finished MAC */
+            if (s->version != DTLS1_BAD_VER && !ssl3_init_finished_mac(s)) {
+                /* SSLfatal() already called */
+                return WORK_ERROR;
+            }
+            /*
+             * The next message should be another ClientHello which we need to
+             * treat like it was the first packet
+             */
+            s->first_packet = 1;
+            break;
+
+        case TLS_ST_SW_SRVR_HELLO:
+            if (SSL_CONNECTION_IS_TLS13(s) && s->hello_retry_request == SSL_HRR_PENDING) {
+                if ((s->options & SSL_OP_ENABLE_MIDDLEBOX_COMPAT) == 0
+                    && statem_flush(s) != 1)
+                    return WORK_MORE_A;
+                break;
+            }
+#ifndef OPENSSL_NO_SCTP
+            if (SSL_CONNECTION_IS_DTLS(s) && s->hit) {
+                unsigned char sctpauthkey[64];
+                char labelbuffer[sizeof(DTLS1_SCTP_AUTH_LABEL)];
+                size_t labellen;
+
+                /*
+                 * Add new shared key for SCTP-Auth, will be ignored if no
+                 * SCTP used.
+                 */
+                memcpy(labelbuffer, DTLS1_SCTP_AUTH_LABEL,
+                       sizeof(DTLS1_SCTP_AUTH_LABEL));
+
+                /* Don't include the terminating zero. */
+                labellen = sizeof(labelbuffer) - 1;
+                if (s->mode & SSL_MODE_DTLS_SCTP_LABEL_LENGTH_BUG)
+                    labellen += 1;
+
+                if (SSL_export_keying_material(ssl, sctpauthkey,
+                                               sizeof(sctpauthkey), labelbuffer,
+                                               labellen, NULL, 0,
+                                               0) <= 0) {
+                    SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+                    return WORK_ERROR;
+                }
+
+                BIO_ctrl(SSL_get_wbio(ssl), BIO_CTRL_DGRAM_SCTP_ADD_AUTH_KEY,
+                         sizeof(sctpauthkey), sctpauthkey);
+            }
+#endif
+            if (!SSL_CONNECTION_IS_TLS13(s)
+                || ((s->options & SSL_OP_ENABLE_MIDDLEBOX_COMPAT) != 0
+                    && s->hello_retry_request != SSL_HRR_COMPLETE))
+                break;
+            /* Fall through */
+
+        case TLS_ST_SW_CHANGE:
+            if (s->hello_retry_request == SSL_HRR_PENDING) {
+                if (!statem_flush(s))
+                    return WORK_MORE_A;
+                break;
+            }
+
+            if (SSL_CONNECTION_IS_TLS13(s)) {
+                if (!ssl->method->ssl3_enc->setup_key_block(s)
+                    || !ssl->method->ssl3_enc->change_cipher_state(s,
+                                                                 SSL3_CC_HANDSHAKE | SSL3_CHANGE_CIPHER_SERVER_WRITE)) {
+                    /* SSLfatal() already called */
+                    return WORK_ERROR;
+                }
+
+                if (s->ext.early_data != SSL_EARLY_DATA_ACCEPTED
+                    && !ssl->method->ssl3_enc->change_cipher_state(s,
+                                                                 SSL3_CC_HANDSHAKE | SSL3_CHANGE_CIPHER_SERVER_READ)) {
+                    /* SSLfatal() already called */
+                    return WORK_ERROR;
+                }
+
+                /*
+                 * We don't yet know whether the next record we are going to receive
+                 * is an unencrypted alert, an encrypted alert, or an encrypted
+                 * handshake message. We temporarily tolerate unencrypted alerts.
+                 */
+               s->statem.enc_read_state = ENC_READ_STATE_ALLOW_PLAIN_ALERTS;
+                break;
+            }
+
+#ifndef OPENSSL_NO_SCTP
+            if (SSL_CONNECTION_IS_DTLS(s) && !s->hit) {
+                /*
+                 * Change to new shared key of SCTP-Auth, will be ignored if
+                 * no SCTP used.
+                 */
+                BIO_ctrl(SSL_get_wbio(s), BIO_CTRL_DGRAM_SCTP_NEXT_AUTH_KEY,
+                         0, NULL);
+            }
+#endif
+            if (!ssl->method->ssl3_enc->change_cipher_state(s,
+                                                          SSL3_CHANGE_CIPHER_SERVER_WRITE)) {
+                /* SSLfatal() already called */
+                return WORK_ERROR;
+            }
+
+            if (SSL_CONNECTION_IS_DTLS(s))
+                dtls1_increment_epoch(s, SSL3_CC_WRITE);
+            break;
+
+        case TLS_ST_SW_SRVR_DONE:
+            if (statem_flush(s) != 1)
+                return WORK_MORE_A;
+            break;
+
+        case TLS_ST_SW_FINISHED:
+
+
+            if (SSL_CONNECTION_IS_TLS13(s)) {
+                /* TLS 1.3 gets the secret size from the handshake md */
+
+                size_t dummy;
+                if(s->early_data_state == SSL_DNS_FINISHED_READING) {
+                    if (!tls13_change_cipher_state(s, SSL3_CC_HANDSHAKE | SSL3_CHANGE_CIPHER_CLIENT_READ)) {
+                        return WORK_ERROR;
+                    }
+                    if (!ssl->method->ssl3_enc->generate_master_secret(s,
+                                                                     s->master_secret, s->handshake_secret, 0,
+                                                                     &dummy)
+                        || !tls13_change_cipher_state(s,
+                                                      SSL3_CC_APPLICATION | SSL3_CHANGE_CIPHER_SERVER_READ))
+                        return WORK_ERROR;
+
+                    if(!tls13_change_cipher_state(s, SSL3_CC_HANDSHAKE | SSL3_CHANGE_CIPHER_CLIENT_WRITE)){
+                        return WORK_ERROR;
+                    }
+                }
+
+                if (!ssl->method->ssl3_enc->generate_master_secret(s,
+                                                                 s->master_secret, s->handshake_secret, 0,
+                                                                 &dummy)
+                                                                 || !tls13_change_cipher_state(s,
+                                                                                                              SSL3_CC_APPLICATION | SSL3_CHANGE_CIPHER_SERVER_WRITE))
+                    /* SSLfatal() already called */
+                    return WORK_ERROR;
+            }
+
+            if(s->early_data_state == SSL_DNS_FINISHED_READING){
+                SSL_CONNECTION tmp = *s;
+                char message[100] = "mmlab";
+
+#include <time.h>
+                SSL_write(SSL_CONNECTION_GET_SSL(s), message, 6);
+                printf("============================================\n");
+                printf("sending application data from server to client : %s ", message);
+                struct timespec send_stoc;
+                clock_gettime(CLOCK_MONOTONIC, &send_stoc);
+                printf(": %f\n",(send_stoc.tv_sec) + (send_stoc.tv_nsec) / 1000000000.0);
+                printf("============================================\n");
+
+                *s = tmp;
+                s->early_data_state = SSL_DNS_FINISHED_WRITING;
+                size_t dummy;
+                if (!ssl->method->ssl3_enc->generate_master_secret(s,
+                                                                 s->master_secret, s->handshake_secret, 0,
+                                                                 &dummy)
+                                                                 || !tls13_change_cipher_state(s,
+                                                                                               SSL3_CC_HANDSHAKE | SSL3_CHANGE_CIPHER_SERVER_READ))
+                    return WORK_ERROR;
+            }
+            if (statem_flush(s) != 1)
+                return WORK_MORE_A;
+
+#ifndef OPENSSL_NO_SCTP
+            if (SSL_CONNECTION_IS_DTLS(s) && s->hit) {
+                /*
+                 * Change to new shared key of SCTP-Auth, will be ignored if
+                 * no SCTP used.
+                 */
+                BIO_ctrl(SSL_get_wbio(s), BIO_CTRL_DGRAM_SCTP_NEXT_AUTH_KEY,
+                         0, NULL);
+            }
+#endif
+//            if (SSL_IS_TLS13(s)) {
+//                /* TLS 1.3 gets the secret size from the handshake md */
+//                size_t dummy;
+//                if (!s->method->ssl3_enc->generate_master_secret(s,
+//                                                                 s->master_secret, s->handshake_secret, 0,
+//                                                                 &dummy)
+//                    || !s->method->ssl3_enc->change_cipher_state(s,
+//                                                                 SSL3_CC_APPLICATION | SSL3_CHANGE_CIPHER_SERVER_WRITE))
+//                    /* SSLfatal() already called */
+//                    return WORK_ERROR;
+//            }
+            break;
+
+        case TLS_ST_SW_CERT_REQ:
+            if (s->post_handshake_auth == SSL_PHA_REQUEST_PENDING) {
+                if (statem_flush(s) != 1)
+                    return WORK_MORE_A;
+            }
+            break;
+
+        case TLS_ST_SW_KEY_UPDATE:
+            if (statem_flush(s) != 1)
+                return WORK_MORE_A;
+            if (!tls13_update_key(s, 1)) {
+                /* SSLfatal() already called */
+                return WORK_ERROR;
+            }
+            break;
+
+        case TLS_ST_SW_SESSION_TICKET:
+            clear_sys_error();
+            if (SSL_CONNECTION_IS_TLS13(s) && statem_flush(s) != 1) {
+                if (SSL_get_error(ssl, 0) == SSL_ERROR_SYSCALL
+                    && conn_is_closed()) {
+                    /*
+                     * We ignore connection closed errors in TLSv1.3 when sending a
+                     * NewSessionTicket and behave as if we were successful. This is
+                     * so that we are still able to read data sent to us by a client
+                     * that closes soon after the end of the handshake without
+                     * waiting to read our post-handshake NewSessionTickets.
+                     */
+                    s->rwstate = SSL_NOTHING;
+                    break;
+                }
+
+                return WORK_MORE_A;
+            }
+            break;
+    }
+
+    return WORK_FINISHED_CONTINUE;
 }

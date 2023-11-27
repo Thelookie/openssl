@@ -705,6 +705,7 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
          */
         if (SSL_in_init(ssl) && type == SSL3_RT_APPLICATION_DATA
                 && SSL_IS_FIRST_HANDSHAKE(s)) {
+            printf("what's matter\n SSL_in_init: %d, type: %d\n",SSL_in_init(ssl),type);
             SSLfatal(s, SSL_AD_UNEXPECTED_MESSAGE, SSL_R_APP_DATA_IN_HANDSHAKE);
             return -1;
         }

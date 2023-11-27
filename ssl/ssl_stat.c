@@ -123,6 +123,12 @@ const char *SSL_state_string_long(const SSL *s)
         return "TLSv1.3 write end of early data";
     case TLS_ST_SR_END_OF_EARLY_DATA:
         return "TLSv1.3 read end of early data";
+    case TLS_ST_CW_DNS_CCS:
+        return "TLS_ST_CW_DNS_CCS";
+    case TLS_ST_SR_DNS_FINISHED_APPLICATION:
+        return "TLS_ST_SR_DNS_FINISHED_APPLICATION";
+    case TLS_ST_CW_DNS_FINISHED_APPLICATION:
+        return "TLS_ST_CW_DNS_FINISHED_APPLICATION";
     default:
         return "unknown state";
     }

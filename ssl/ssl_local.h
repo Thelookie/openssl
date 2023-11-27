@@ -615,7 +615,11 @@ typedef enum {
     SSL_EARLY_DATA_ACCEPTING,
     SSL_EARLY_DATA_READ_RETRY,
     SSL_EARLY_DATA_READING,
-    SSL_EARLY_DATA_FINISHED_READING
+    SSL_EARLY_DATA_FINISHED_READING,
+    SSL_DNS_CCS,
+    SSL_DNS_FINISHED_WRITING,
+    SSL_DNS_FINISHED_READING,
+    SSL_DNS_FINISHED_READING2
 } SSL_EARLY_DATA_STATE;
 
 /*
@@ -2143,6 +2147,9 @@ typedef struct ssl3_enc_method {
     /* Write out handshake message */
     int (*do_write) (SSL_CONNECTION *s);
 } SSL3_ENC_METHOD;
+
+int SSL_do_handshake(SSL *s);
+int SSL_do_handshake_reduce(SSL *s);
 
 # define ssl_set_handshake_header(s, pkt, htype) \
     SSL_CONNECTION_GET_SSL(s)->method->ssl3_enc->set_handshake_header((s), (pkt), (htype))

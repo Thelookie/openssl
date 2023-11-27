@@ -1669,6 +1669,7 @@ static const BIO_METHOD *fd_method(SSL *s)
 
 int SSL_set_fd(SSL *s, int fd)
 {
+    printf("start setting fd\n");
     int ret = 0;
     BIO *bio = NULL;
 
@@ -2154,22 +2155,29 @@ int SSL_get_async_status(SSL *s, int *status)
 }
 
 int SSL_accept(SSL *s)
-{
+{   
+    //printf("starting accept_state!\n");
     SSL_CONNECTION *sc = SSL_CONNECTION_FROM_SSL(s);
+    //printf("statem_status: %d\n",sc->statem.state);
 
 #ifndef OPENSSL_NO_QUIC
     if (IS_QUIC(s))
         return s->method->ssl_accept(s);
 #endif
 
-    if (sc == NULL)
+    if (sc == NULL){
+        //printf("SSL_accept, sc == NULL\n");
         return 0;
-
-    if (sc->handshake_func == NULL) {
-        /* Not properly initialized yet */
-        SSL_set_accept_state(s);
     }
 
+    if (sc->handshake_func == NULL) {
+        //printf("get more accept_state!\n");
+        /* Not properly initialized yet */
+        SSL_set_accept_state(s);
+        //printf("statem_status2: %d\n",sc->statem.state);
+    }
+    
+   // printf("statem_status: %d\n",sc->statem.state);
     return SSL_do_handshake(s);
 }
 
@@ -4699,8 +4707,22 @@ static int ssl_do_handshake_intern(void *vargs)
 
 int SSL_do_handshake(SSL *s)
 {
-    int ret = 1;
+   // printf("lets do handshake bro\n");
     SSL_CONNECTION *sc = SSL_CONNECTION_FROM_SSL(s);
+   // printf("statem_status in do handshake: %d\n",sc->statem.state);
+    int ret = 1;
+    
+    int dns = 1;
+
+    if(dns){
+       // printf("go to ztls handshake\n");
+        return SSL_do_handshake_reduce(s);
+        }
+    
+    printf("==============================================\n");
+    printf("start do handshake\n");
+    printf("==============================================\n");
+
 
 #ifndef OPENSSL_NO_QUIC
     if (IS_QUIC(s))
@@ -4709,6 +4731,7 @@ int SSL_do_handshake(SSL *s)
 
     if (sc->handshake_func == NULL) {
         ERR_raise(ERR_LIB_SSL, SSL_R_CONNECTION_TYPE_NOT_SET);
+        printf("handshake_func is null");
         return -1;
     }
 
@@ -4731,8 +4754,55 @@ int SSL_do_handshake(SSL *s)
     return ret;
 }
 
+int SSL_do_handshake_reduce(SSL *s)
+{
+    struct timespec begin;
+    clock_gettime(CLOCK_MONOTONIC, &begin);
+    printf("==============================================\n");
+    printf("start do handshake reduce\n");
+    printf(" : %f\n",(begin.tv_sec) + (begin.tv_nsec) / 1000000000.0);
+    printf("==============================================\n");
+
+    int ret = 1;
+
+    SSL_CONNECTION *sc = SSL_CONNECTION_FROM_SSL(s);
+    //printf("statem_status in do handshake reduce: %d\n",sc->statem.state);
+    if (sc->handshake_func == NULL) {
+        printf("handshake_func is empty!");
+        ERR_raise(ERR_LIB_SSL, SSL_R_CONNECTION_TYPE_NOT_SET);
+        return -1;
+    }
+
+    ossl_statem_check_finish_init(sc, -1);
+
+    s->method->ssl_renegotiate_check(s, 0);
+
+    if (SSL_in_init(s) || SSL_in_before(s)) {
+        if((sc->mode & SSL_MODE_ASYNC) && ASYNC_get_current_job() == NULL) {
+            struct ssl_async_args args;
+
+           ret = ssl_start_async_job(s, &args, ssl_do_handshake_intern);
+             args.s = s;
+
+        }else{
+            if(sc->server){
+                
+                printf("go ossl_statem_accept_reduce\n");
+                sc->handshake_func = ossl_statem_accept_reduce;
+            }
+            else {   
+            printf("ossl_statem_connect_reduce\n");
+            sc->handshake_func = ossl_statem_connect_reduce;
+            }
+            ret = sc->handshake_func(s);
+        }
+    }
+    return ret;
+}
+
 void SSL_set_accept_state(SSL *s)
 {
+    //printf("start do setting accept states\n");
     SSL_CONNECTION *sc = SSL_CONNECTION_FROM_SSL_ONLY(s);
 
 #ifndef OPENSSL_NO_QUIC
@@ -4744,7 +4814,7 @@ void SSL_set_accept_state(SSL *s)
 
     sc->server = 1;
     sc->shutdown = 0;
-    ossl_statem_clear(sc);
+    ossl_statem_clear(sc);  
     sc->handshake_func = s->method->ssl_accept;
     /* Ignore return value. Its a void public API function */
     clear_record_layer(sc);

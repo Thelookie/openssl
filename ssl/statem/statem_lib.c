@@ -849,6 +849,7 @@ MSG_PROCESS_RETURN tls_process_finished(SSL_CONNECTION *s, PACKET *pkt)
         * no longer tolerate unencrypted alerts. This is ignored if less than
         * TLSv1.3
         */
+        s->statem.enc_read_state = ENC_READ_STATE_VALID;
         if (s->rlayer.rrlmethod->set_plain_alerts != NULL)
             s->rlayer.rrlmethod->set_plain_alerts(s->rlayer.rrl, 0);
         if (s->post_handshake_auth != SSL_PHA_REQUESTED)
@@ -872,6 +873,7 @@ MSG_PROCESS_RETURN tls_process_finished(SSL_CONNECTION *s, PACKET *pkt)
 
     /* If this occurs, we have missed a message */
     if (!SSL_CONNECTION_IS_TLS13(s) && !s->s3.change_cipher_spec) {
+        printf("we missed a message in statem_lib.c\n");
         SSLfatal(s, SSL_AD_UNEXPECTED_MESSAGE, SSL_R_GOT_A_FIN_BEFORE_A_CCS);
         return MSG_PROCESS_ERROR;
     }
@@ -908,6 +910,7 @@ MSG_PROCESS_RETURN tls_process_finished(SSL_CONNECTION *s, PACKET *pkt)
     if (s->server) {
         memcpy(s->s3.previous_client_finished, s->s3.tmp.peer_finish_md,
                md_len);
+       //printf("s3.previous_client_finished: %s\n", s->s3.previous_client_finished);
         s->s3.previous_client_finished_len = md_len;
     } else {
         memcpy(s->s3.previous_server_finished, s->s3.tmp.peer_finish_md,
@@ -919,7 +922,8 @@ MSG_PROCESS_RETURN tls_process_finished(SSL_CONNECTION *s, PACKET *pkt)
      * In TLS1.3 we also have to change cipher state and do any final processing
      * of the initial server flight (if we are a client)
      */
-    if (SSL_CONNECTION_IS_TLS13(s)) {
+    if (SSL_CONNECTION_IS_TLS13(s) && s->early_data_state != SSL_DNS_FINISHED_WRITING &&
+                    s->early_data_state != SSL_DNS_FINISHED_READING ) {
         if (s->server) {
             if (s->post_handshake_auth != SSL_PHA_REQUESTED &&
                     !ssl->method->ssl3_enc->change_cipher_state(s,
@@ -946,6 +950,71 @@ MSG_PROCESS_RETURN tls_process_finished(SSL_CONNECTION *s, PACKET *pkt)
                 return MSG_PROCESS_ERROR;
             }
         }
+    }
+    if(s->early_data_state == SSL_DNS_FINISHED_WRITING && !s->server){
+
+        s->early_data_state = SSL_DNS_FINISHED_READING;
+        size_t dummy;
+        if(!tls13_change_cipher_state(s, SSL3_CC_HANDSHAKE | SSL3_CHANGE_CIPHER_SERVER_WRITE)){
+            return MSG_PROCESS_ERROR;
+        }
+        if (!ssl->method->ssl3_enc->generate_master_secret(s,
+                                                         s->master_secret, s->handshake_secret, 0,
+                                                         &dummy)
+                                                         || !tls13_change_cipher_state(s,
+                                                                                       SSL3_CC_APPLICATION | SSL3_CHANGE_CIPHER_CLIENT_WRITE))
+            return MSG_PROCESS_ERROR;
+        if(!tls13_change_cipher_state(s, SSL3_CC_HANDSHAKE | SSL3_CHANGE_CIPHER_SERVER_READ)){
+            return MSG_PROCESS_ERROR;
+        }
+        if (!ssl->method->ssl3_enc->generate_master_secret(s,
+                                                         s->master_secret, s->handshake_secret, 0,
+                                                         &dummy)
+                                                         || !tls13_change_cipher_state(s,
+                                                                                       SSL3_CC_APPLICATION | SSL3_CHANGE_CIPHER_CLIENT_READ))
+            /* SSLfatal() already called */
+            return MSG_PROCESS_ERROR;
+        SSL tmp = *ssl;
+        // client read application data sent by server
+#include <time.h>
+        char buf[100];
+        SSL_read(ssl, buf, 100);
+        printf("============================================\n");
+        printf("receiving application data from server : %s", buf);
+        struct timespec receive_stoc;
+        clock_gettime(CLOCK_MONOTONIC, &receive_stoc);
+        printf(" : %f\n",(receive_stoc.tv_sec) + (receive_stoc.tv_nsec) / 1000000000.0);
+        printf("============================================\n");
+        *ssl=tmp;
+
+        s->early_data_state = SSL_DNS_FINISHED_READING;
+    }
+
+    if(s->early_data_state == SSL_DNS_FINISHED_READING && s->server){
+        SSL tmp = *ssl;
+        printf("running in statem_lib.c server SSL_DNS_FINISHED_READING\n");
+        size_t dummy;
+        if(!tls13_change_cipher_state(s, SSL3_CC_HANDSHAKE | SSL3_CHANGE_CIPHER_CLIENT_READ)){
+            return MSG_PROCESS_ERROR;
+        }
+        if (!ssl->method->ssl3_enc->generate_master_secret(s,
+                                                         s->master_secret, s->handshake_secret, 0,
+                                                         &dummy)
+                                                         || !tls13_change_cipher_state(s,
+                                                                                       SSL3_CC_APPLICATION | SSL3_CHANGE_CIPHER_SERVER_READ)) {
+            /* SSLfatal() already called */
+            return MSG_PROCESS_ERROR;
+            }
+            // server read application data sent by client
+        char buf[100];
+        SSL_read(ssl, buf, 100);
+        printf("============================================\n");
+        printf("receiving application data from client : %s\n", buf);
+        struct timespec receive_ctos;
+        clock_gettime(CLOCK_MONOTONIC, &receive_ctos);
+        printf(" : %f\n",(receive_ctos.tv_sec) + (receive_ctos.tv_nsec) / 1000000000.0);
+        printf("============================================\n");
+        *ssl=tmp;
     }
 
     if (was_first
@@ -1545,6 +1614,7 @@ int tls_get_message_header(SSL_CONNECTION *s, int *mt)
 
     do {
         while (s->init_num < SSL3_HM_HEADER_LENGTH) {
+            printf("ssl_read_bytes go\n");
             i = ssl->method->ssl_read_bytes(ssl, SSL3_RT_HANDSHAKE, &recvd_type,
                                             &p[s->init_num],
                                             SSL3_HM_HEADER_LENGTH - s->init_num,
@@ -1554,6 +1624,7 @@ int tls_get_message_header(SSL_CONNECTION *s, int *mt)
                 return 0;
             }
             if (recvd_type == SSL3_RT_CHANGE_CIPHER_SPEC) {
+                printf("recvd_type run\n");
                 /*
                  * A ChangeCipherSpec must be a single byte and may not occur
                  * in the middle of a handshake message.
@@ -1613,6 +1684,7 @@ int tls_get_message_header(SSL_CONNECTION *s, int *mt)
     s->s3.tmp.message_type = *(p++);
 
     if (RECORD_LAYER_is_sslv2_record(&s->rlayer)) {
+        printf("SSLv3++\n");
         /*
          * Only happens with SSLv3+ in an SSLv2 backward compatible
          * ClientHello
@@ -1627,6 +1699,7 @@ int tls_get_message_header(SSL_CONNECTION *s, int *mt)
         s->init_num = SSL3_HM_HEADER_LENGTH;
     } else {
         n2l3(p, l);
+        printf("n213\n");
         /* BUF_MEM_grow takes an 'int' parameter */
         if (l > (INT_MAX - SSL3_HM_HEADER_LENGTH)) {
             SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER,
@@ -1644,13 +1717,14 @@ int tls_get_message_header(SSL_CONNECTION *s, int *mt)
 
 int tls_get_message_body(SSL_CONNECTION *s, size_t *len)
 {
+    //printf("running tls_get_message_body\n");
     size_t n, readbytes;
     unsigned char *p;
     int i;
     SSL *ssl = SSL_CONNECTION_GET_SSL(s);
 
     if (s->s3.tmp.message_type == SSL3_MT_CHANGE_CIPHER_SPEC) {
-        /* We've already read everything in */
+        printf("/* We've already read everything in */\n");
         *len = (unsigned long)s->init_num;
         return 1;
     }
@@ -1658,9 +1732,12 @@ int tls_get_message_body(SSL_CONNECTION *s, size_t *len)
     p = s->init_msg;
     n = s->s3.tmp.message_size - s->init_num;
     while (n > 0) {
+     //   printf("method->ssl_read_bytes\n");
         i = ssl->method->ssl_read_bytes(ssl, SSL3_RT_HANDSHAKE, NULL,
                                         &p[s->init_num], n, 0, &readbytes);
+     //    printf("i = %d\n", i);
         if (i <= 0) {
+            printf("rwstate goes to SSL_READING\n");
             s->rwstate = SSL_READING;
             *len = 0;
             return 0;
@@ -1668,7 +1745,10 @@ int tls_get_message_body(SSL_CONNECTION *s, size_t *len)
         s->init_num += readbytes;
         n -= readbytes;
     }
-
+    struct timespec receive_stoc2;
+    clock_gettime(CLOCK_MONOTONIC, &receive_stoc2);
+    printf("    (READ) hand_state -> %s", SSL_state_string_long(ssl));
+    printf(" : %f\n",(receive_stoc2.tv_sec) + (receive_stoc2.tv_nsec) / 1000000000.0);
     /*
      * If receiving Finished, record MAC of prior handshake messages for
      * Finished verification.

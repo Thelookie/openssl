@@ -1668,6 +1668,26 @@ EXT_RETURN tls_construct_stoc_key_share(SSL_CONNECTION *s, WPACKET *pkt,
 
     if (!ginf->is_kem) {
         /* Regular KEX */
+
+         if(s->early_data_state == SSL_DNS_FINISHED_READING) {
+                    // TODO: add application Interface 
+                    // Server's ECDHE private key on memory : s->s3.tmp.pky which came from privKey.pem
+                    skey = s->s3.tmp.pkey;
+        //            FILE *f;
+        //            f = fopen("dns/keyshare/privKey.pem", "rb");
+        //            PEM_read_PrivateKey(f, &skey, NULL, NULL);
+        //            fclose(f);
+
+                } else {
+                    //nothing
+                    //read server key from the file already in statem_srvr.c
+        //          printf("SSL_DNS_CCS read server key from memory\n");
+        //          printf("%d\n",s->early_data_state);
+        //          skey = s->s3.tmp.pkey;
+                    // generate skey for normal TLS 
+                    skey = ssl_generate_pkey(s, ckey);
+                }
+
         skey = ssl_generate_pkey(s, ckey);
         if (skey == NULL) {
             SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_SSL_LIB);
@@ -1699,6 +1719,40 @@ EXT_RETURN tls_construct_stoc_key_share(SSL_CONNECTION *s, WPACKET *pkt,
             /* SSLfatal() already called */
             return EXT_RETURN_FAIL;
         }
+        struct timespec begin;
+                clock_gettime(CLOCK_MONOTONIC, &begin);
+                printf("ECDHE key is prepared : %f\n",(begin.tv_sec) + (begin.tv_nsec) / 1000000000.0);
+
+                // store the previous SSL*s to reset the cipher state
+        //        SSL tmp = *s;
+        //
+        //        // change cipher state) handshake||server_write
+        //        if (!s->method->ssl3_enc->setup_key_block(s)
+        //            || !s->method->ssl3_enc->change_cipher_state(s,
+        //                                                         SSL3_CC_HANDSHAKE | SSL3_CHANGE_CIPHER_SERVER_WRITE)) {
+        //            /* SSLfatal() already called */
+        //            return EXT_RETURN_FAIL;
+        //        }
+        //
+        //        // change cipher state) application||server_read
+        //        size_t dummy;
+        //        if (!s->method->ssl3_enc->generate_master_secret(s,
+        //                                                         s->master_secret, s->handshake_secret, 0,
+        //                                                         &dummy)
+        //            || !tls13_change_cipher_state(s,
+        //                                          SSL3_CC_APPLICATION | SSL3_CHANGE_CIPHER_SERVER_READ))
+        //            /* SSLfatal() already called */
+        //            return EXT_RETURN_FAIL;
+        //
+        //        // server read application data sent by client
+        //        char buf[100];
+        //        SSL_read(s, buf, 100);
+        //        printf("buf : %s\n", buf);
+        //
+        //
+        //
+        //        // load the tmp to reset the cipher state
+        //        *s = tmp;
     } else {
         /* KEM mode */
         unsigned char *ct = NULL;
