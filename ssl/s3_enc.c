@@ -373,7 +373,8 @@ size_t ssl3_final_finish_mac(SSL_CONNECTION *s, const char *sender, size_t len,
 int ssl3_generate_master_secret(SSL_CONNECTION *s, unsigned char *out,
                                 unsigned char *p,
                                 size_t len, size_t *secret_size)
-{
+{   
+    printf("im here!!\n\n");
     static const unsigned char *salt[3] = {
 #ifndef CHARSET_EBCDIC
         (const unsigned char *)"A",

@@ -1975,7 +1975,7 @@ static int tls_early_post_process_client_hello(SSL_CONNECTION *s)
     DOWNGRADE dgrd = DOWNGRADE_NONE;
     SSL_CTX *sctx = SSL_CONNECTION_GET_CTX(s);
     SSL *ssl = SSL_CONNECTION_GET_SSL(s);
-
+   // printf("----tls_early_post_process_client_hello %s\n",SSL_state_string_long(SSL_CONNECTION_GET_SSL(s)));
     /* Finished parsing the ClientHello, now we can start processing it */
     /* Give the ClientHello callback a crack at things */
     if (sctx->client_hello_cb != NULL) {
@@ -2803,9 +2803,11 @@ CON_FUNC_RETURN tls_construct_server_hello(SSL_CONNECTION *s, WPACKET *pkt)
 
 WORK_STATE tls_post_process_client_hello_reduce(SSL_CONNECTION *s, WORK_STATE wst) {
     printf("enterd to tls_post_process_client_hello_reduce\n");
+
     const SSL_CIPHER *cipher;
     SSL *ssl = SSL_CONNECTION_GET_SSL(s);
     printf("early_data_state: %d\n", s->early_data_state);
+  //  printf("  bbbb: %s\n",SSL_state_string_long(SSL_CONNECTION_GET_SSL(s)));
     int BUF_SIZE = 100;
     char buf[BUF_SIZE];
 
@@ -2822,6 +2824,7 @@ WORK_STATE tls_post_process_client_hello_reduce(SSL_CONNECTION *s, WORK_STATE ws
     }
     if (wst == WORK_MORE_B) {
         printf("work more b\n");
+     //   printf("  cccc: %s\n",SSL_state_string_long(SSL_CONNECTION_GET_SSL(s)));
         if (!s->hit || SSL_CONNECTION_IS_TLS13(s)) {
                         printf("work more b scope\n");
             /* Let cert callback update server certificates if required */
@@ -2908,6 +2911,7 @@ WORK_STATE tls_post_process_client_hello_reduce(SSL_CONNECTION *s, WORK_STATE ws
 #ifndef OPENSSL_NO_SRP
     if (wst == WORK_MORE_C) {
         printf("work more c\n");
+       // printf("  ddddd: %s\n",SSL_state_string_long(SSL_CONNECTION_GET_SSL(s)));
         int ret;
         if ((ret = ssl_check_srp_ext_ClientHello(s)) == 0) {
             /*
@@ -2970,6 +2974,7 @@ WORK_STATE tls_post_process_client_hello_reduce(SSL_CONNECTION *s, WORK_STATE ws
         printf("\nssl_derive finished\n");
     }
     if(s->early_data_state == SSL_DNS_CCS){
+       // printf("  bbbb: %s\n",SSL_state_string_long(SSL_CONNECTION_GET_SSL(s)));
         // change cipher state) handshake||server_write
         if (!ssl->method->ssl3_enc->setup_key_block(s)
         || !ssl->method->ssl3_enc->change_cipher_state(s,
@@ -3002,10 +3007,10 @@ WORK_STATE tls_post_process_client_hello_reduce(SSL_CONNECTION *s, WORK_STATE ws
 //            goto err;
 //
 //            // server read application data sent by client
-//            //    buf[100];
-        SSL_read(ssl, buf, 100);
-        printf("Client->Server DNS application data\n");
-        printf("buf : %s\n", buf);
+//        buf[100];
+//        SSL_read(ssl, buf, 100);
+//        printf("Client->Server DNS application data\n");
+//        printf("buf : %s\n", buf);
 //
 //
 //
@@ -3024,7 +3029,10 @@ WORK_STATE tls_post_process_client_hello_reduce(SSL_CONNECTION *s, WORK_STATE ws
     }
 
     err:
+    {
+    printf("error aqurred!\n");
     return WORK_ERROR;
+    }
 }
 
 

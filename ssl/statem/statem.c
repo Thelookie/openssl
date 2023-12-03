@@ -1018,7 +1018,7 @@ static SUB_STATE_RETURN read_state_machine_reduce(SSL_CONNECTION *s) {
     size_t (*max_message_size)(SSL_CONNECTION *s);
     void (*cb)(const SSL *ssl, int type, int val) = NULL;
     SSL *ssl = SSL_CONNECTION_GET_SSL(s);
-
+   //printf("  aaaaa: %s\n",SSL_state_string_long(SSL_CONNECTION_GET_SSL(s)));
     cb = get_callback(s);
 
     if (s->server) {
@@ -1042,6 +1042,7 @@ static SUB_STATE_RETURN read_state_machine_reduce(SSL_CONNECTION *s) {
     while (1) {
 
         printf("St->read_state_machine_reduce: %d\n",st->read_state);
+        printf("  aaaaa: %s\n",SSL_state_string_long(SSL_CONNECTION_GET_SSL(s)));
         switch (st->read_state) {
             case READ_STATE_HEADER:
 
@@ -1054,9 +1055,12 @@ static SUB_STATE_RETURN read_state_machine_reduce(SSL_CONNECTION *s) {
                     ret = dtls_get_message(s, &mt);
                 } else {
                     printf("    read message header in tls_get_message_header\n");
+                   // printf("  before tls_get_message_header: %s\n",SSL_state_string_long(SSL_CONNECTION_GET_SSL(s)));
                     ret = tls_get_message_header(s, &mt);  // ret will be 1
+                   // printf("  after tls_get_message_header: %s\n",SSL_state_string_long(SSL_CONNECTION_GET_SSL(s)));
                 }
                 if (ret == 0) {
+                    printf("error after tls_get_message_header\n");
                     /* Could be non-blocking IO */
                     return SUB_STATE_ERROR;
                 }
@@ -1099,6 +1103,7 @@ static SUB_STATE_RETURN read_state_machine_reduce(SSL_CONNECTION *s) {
 
             case READ_STATE_BODY:
                printf("READ_STATE_BODY in read_state_machine reduce func\n");
+              // printf(" hand_state_tls_get_message_body -> %s\n", SSL_state_string_long(ssl));
                 if (SSL_CONNECTION_IS_DTLS(s)) {
                     /*
                      * Actually we already have the body, but we give DTLS the

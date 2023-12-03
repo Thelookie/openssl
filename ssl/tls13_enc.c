@@ -18,6 +18,8 @@
 
 #define TLS13_MAX_LABEL_LEN     249
 
+static const unsigned char default_zeros[EVP_MAX_MD_SIZE];
+
 /* ASCII: "tls13 ", in hex for EBCDIC compatibility */
 static const unsigned char label_prefix[] = "\x74\x6C\x73\x31\x33\x20";
 
@@ -166,59 +168,109 @@ int tls13_generate_secret(SSL_CONNECTION *s, const EVP_MD *md,
                           size_t insecretlen,
                           unsigned char *outsecret)
 {
-    size_t mdlen;
+    size_t mdlen, prevsecretlen;
     int mdleni;
     int ret;
     EVP_KDF *kdf;
     EVP_KDF_CTX *kctx;
-    OSSL_PARAM params[7], *p = params;
+    OSSL_PARAM params[5], *p = params;
     int mode = EVP_PKEY_HKDEF_MODE_EXTRACT_ONLY;
     const char *mdname = EVP_MD_get0_name(md);
     /* ASCII: "derived", in hex for EBCDIC compatibility */
+#ifdef CHARSET_EBCDIC
     static const char derived_secret_label[] = "\x64\x65\x72\x69\x76\x65\x64";
+#else 
+    static const char derived_secret_label[] = "derived";
+#endif
+    unsigned char preextractsec[EVP_MAX_MD_SIZE];
+
     SSL_CTX *sctx = SSL_CONNECTION_GET_CTX(s);
 
     kdf = EVP_KDF_fetch(sctx->libctx, OSSL_KDF_NAME_TLS1_3_KDF, sctx->propq);
     kctx = EVP_KDF_CTX_new(kdf);
     EVP_KDF_free(kdf);
+    printf("    (tls13_generate_secret) 1\n");
     if (kctx == NULL) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
         return 0;
     }
-
+    printf("    (tls13_generate_secret) 2\n");
     mdleni = EVP_MD_get_size(md);
+    printf("mdleni : %d\n", mdleni);
     /* Ensure cast to size_t is safe */
     if (!ossl_assert(mdleni >= 0)) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
         EVP_KDF_CTX_free(kctx);
         return 0;
     }
+    printf("    (tls13_generate_secret) 3\n");
     mdlen = (size_t)mdleni;
+
+        if (insecret == NULL) {
+        insecret = default_zeros;
+        insecretlen = mdlen;
+    }
+    if (prevsecret == NULL) {
+        prevsecret = default_zeros;
+        prevsecretlen = 0;
+    } else {
+        printf("    (tls13_generate_secret) 4\n");
+        EVP_MD_CTX *mctx = EVP_MD_CTX_new();
+        unsigned char hash[EVP_MAX_MD_SIZE];
+
+        /* The pre-extract derive step uses a hash of no messages */
+        if (mctx == NULL
+                || EVP_DigestInit_ex(mctx, md, NULL) <= 0
+                || EVP_DigestFinal_ex(mctx, hash, NULL) <= 0) {
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+            EVP_MD_CTX_free(mctx);
+            EVP_KDF_CTX_free(kctx);
+            return 0;
+        }
+        EVP_MD_CTX_free(mctx);
+        printf("    (tls13_generate_secret) 5\n");
+        /* Generate the pre-extract secret */
+        if (!tls13_hkdf_expand(s, md, prevsecret,
+                               (unsigned char *)derived_secret_label,
+                               sizeof(derived_secret_label) - 1, hash, mdlen,
+                               preextractsec, mdlen, 1)) {
+            /* SSLfatal() already called */
+            EVP_KDF_CTX_free(kctx);
+            return 0;
+        }
+        printf("    (tls13_generate_secret) 6\n");
+
+        prevsecret = preextractsec;
+        prevsecretlen = mdlen;
+    }
+    printf("    (tls13_generate_secret) 7\n");
 
     *p++ = OSSL_PARAM_construct_int(OSSL_KDF_PARAM_MODE, &mode);
     *p++ = OSSL_PARAM_construct_utf8_string(OSSL_KDF_PARAM_DIGEST,
                                             (char *)mdname, 0);
-    if (insecret != NULL)
+   // if (insecret != NULL)
         *p++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_KEY,
                                                  (unsigned char *)insecret,
                                                  insecretlen);
-    if (prevsecret != NULL)
+  //  if (prevsecret != NULL)
         *p++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_SALT,
-                                                 (unsigned char *)prevsecret, mdlen);
-    *p++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_PREFIX,
-                                             (unsigned char *)label_prefix,
-                                             sizeof(label_prefix) - 1);
-    *p++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_LABEL,
-                                             (unsigned char *)derived_secret_label,
-                                             sizeof(derived_secret_label) - 1);
+                                                 (unsigned char *)prevsecret, prevsecretlen);
+   // *p++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_PREFIX,
+   //                                          (unsigned char *)label_prefix,
+   //                                          sizeof(label_prefix) - 1);
+//    *p++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_LABEL,
+      //                                       (unsigned char *)derived_secret_label,
+       //                                      sizeof(derived_secret_label) - 1);
     *p++ = OSSL_PARAM_construct_end();
 
     ret = EVP_KDF_derive(kctx, outsecret, mdlen, params) <= 0;
-
+    printf("    (tls13_generate_secret) 8\n");
     if (ret != 0)
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
 
     EVP_KDF_CTX_free(kctx);
+    if (prevsecret == preextractsec)
+        OPENSSL_cleanse(preextractsec, mdlen);
     return ret == 0;
 }
 
@@ -246,6 +298,7 @@ int tls13_generate_master_secret(SSL_CONNECTION *s, unsigned char *out,
                                  unsigned char *prev, size_t prevlen,
                                  size_t *secret_size)
 {
+    printf("\nim here\n");
     const EVP_MD *md = ssl_handshake_md(s);
 
     *secret_size = EVP_MD_get_size(md);

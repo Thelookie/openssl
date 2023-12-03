@@ -562,10 +562,16 @@ int ssl_release_record(SSL_CONNECTION *s, TLS_RECORD *rr, size_t length)
  *     Application data protocol
  *             none of our business
  */
+
+
+///////////////////////////////////////////////////////////////
+
 int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
                     unsigned char *buf, size_t len,
                     int peek, size_t *readbytes)
 {
+    
+      
     int i, j, ret;
     size_t n, curr_rec, totalbytes;
     TLS_RECORD *rr;
@@ -580,6 +586,7 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
             && (type != SSL3_RT_HANDSHAKE))
         || (peek && (type != SSL3_RT_APPLICATION_DATA))) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+     //   printf("aaa\n");
         return -1;
     }
 
@@ -619,8 +626,10 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
         /* SSLfatal() already called */
         if (i < 0)
             return i;
-        if (i == 0)
+        if (i == 0){
+         //   printf("bbb\n");
             return -1;
+        }
     }
  start:
     s->rwstate = SSL_NOTHING;
@@ -637,7 +646,7 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
         s->rlayer.curr_rec = s->rlayer.num_recs = 0;
         do {
             rr = &s->rlayer.tlsrecs[s->rlayer.num_recs];
-
+            printf("vvvv: %d\n", rr->type);
             ret = HANDLE_RLAYER_READ_RETURN(s,
                     s->rlayer.rrlmethod->read_record(s->rlayer.rrl,
                                                      &rr->rechandle,
@@ -660,6 +669,7 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
             && SSL_CONNECTION_IS_TLS13(s)) {
         SSLfatal(s, SSL_AD_UNEXPECTED_MESSAGE,
                  SSL_R_MIXED_HANDSHAKE_AND_NON_HANDSHAKE_DATA);
+        //printf("ccc\n");
         return -1;
     }
 
@@ -677,6 +687,7 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
         && (rr->type != SSL3_RT_HANDSHAKE)) {
         SSLfatal(s, SSL_AD_UNEXPECTED_MESSAGE,
                  SSL_R_DATA_BETWEEN_CCS_AND_FINISHED);
+      //  printf("ddd\n");
         return -1;
     }
 
@@ -687,13 +698,17 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
     if (s->shutdown & SSL_RECEIVED_SHUTDOWN) {
         s->rlayer.curr_rec++;
         s->rwstate = SSL_NOTHING;
+      //  printf("eee\n");
         return 0;
     }
-
+    printf("aaa\n");
+    printf("type: %d\n", type);
+    printf("rr->type: %d\n",rr->type);
     if (type == rr->type
         || (rr->type == SSL3_RT_CHANGE_CIPHER_SPEC
             && type == SSL3_RT_HANDSHAKE && recvd_type != NULL
             && !is_tls13)) {
+        printf("triggered\n");
         /*
          * SSL3_RT_APPLICATION_DATA or
          * SSL3_RT_HANDSHAKE or
@@ -705,7 +720,7 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
          */
         if (SSL_in_init(ssl) && type == SSL3_RT_APPLICATION_DATA
                 && SSL_IS_FIRST_HANDSHAKE(s)) {
-            printf("what's matter\n SSL_in_init: %d, type: %d\n",SSL_in_init(ssl),type);
+            printf("what's matter\n");
             SSLfatal(s, SSL_AD_UNEXPECTED_MESSAGE, SSL_R_APP_DATA_IN_HANDSHAKE);
             return -1;
         }
@@ -726,15 +741,16 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
              * SSL_read() with a zero length buffer will eventually cause
              * SSL_pending() to report data as being available.
              */
-            if (rr->length == 0 && !ssl_release_record(s, rr, 0))
+            if (rr->length == 0 && !ssl_release_record(s, rr, 0)){
                 return -1;
-
+            }
             return 0;
         }
 
         totalbytes = 0;
         curr_rec = s->rlayer.curr_rec;
         do {
+            printf("do\n");
             if (len - totalbytes > rr->length)
                 n = rr->length;
             else
@@ -744,11 +760,13 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
             buf += n;
             if (peek) {
                 /* Mark any zero length record as consumed CVE-2016-6305 */
-                if (rr->length == 0 && !ssl_release_record(s, rr, 0))
+                if (rr->length == 0 && !ssl_release_record(s, rr, 0)){
                     return -1;
+                }
             } else {
-                if (!ssl_release_record(s, rr, n))
+                if (!ssl_release_record(s, rr, n)){
                     return -1;
+                }
             }
             if (rr->length == 0
                 || (peek && n == rr->length)) {
@@ -835,8 +853,9 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
         if ((!is_tls13 && alert_level == SSL3_AL_WARNING)
                 || (is_tls13 && alert_descr == SSL_AD_USER_CANCELLED)) {
             s->s3.warn_alert = alert_descr;
-            if (!ssl_release_record(s, rr, 0))
+            if (!ssl_release_record(s, rr, 0)){
                 return -1;
+            }
 
             s->rlayer.alert_count++;
             if (s->rlayer.alert_count == MAX_WARN_ALERT_COUNT) {
@@ -863,8 +882,10 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
                           SSL_AD_REASON_OFFSET + alert_descr,
                           "SSL alert number %d", alert_descr);
             s->shutdown |= SSL_RECEIVED_SHUTDOWN;
-            if (!ssl_release_record(s, rr, 0))
+            if (!ssl_release_record(s, rr, 0)){
+              //  printf("jjj\n");
                 return -1;
+            }
             SSL_CTX_remove_session(s->session_ctx, s->session);
             return 0;
         } else if (alert_descr == SSL_AD_NO_RENEGOTIATION) {
@@ -919,8 +940,9 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
              * above.
              * No alert sent because we already sent close_notify
              */
-            if (!ssl_release_record(s, rr, 0))
+            if (!ssl_release_record(s, rr, 0)){
                 return -1;
+            }
             SSLfatal(s, SSL_AD_NO_ALERT,
                      SSL_R_APPLICATION_DATA_AFTER_CLOSE_NOTIFY);
             return -1;
@@ -951,8 +973,9 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
          * We release the number of bytes consumed, or the whole record if it
          * is zero length
          */
-        if ((n > 0 || rr->length == 0) && !ssl_release_record(s, rr, n))
+        if ((n > 0 || rr->length == 0) && !ssl_release_record(s, rr, n)){
             return -1;
+        }
 
         if (*dest_len < dest_maxlen)
             goto start;     /* fragment was too small */
@@ -987,8 +1010,9 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
          * handshake message, then we don't want to continue to try and read
          * the application data any more. It won't be "early" now.
          */
-        if (ined)
+        if (ined){
             return -1;
+        }
 
         if (!(s->mode & SSL_MODE_AUTO_RETRY)) {
             if (!RECORD_LAYER_read_pending(&s->rlayer)) {
@@ -1056,16 +1080,22 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
                 /* SSLfatal() already called */
                 return -1;
             }
-            if (!ssl_release_record(s, rr, 0))
+            if (!ssl_release_record(s, rr, 0)){
                 return -1;
+            }
             goto start;
         } else {
             SSLfatal(s, SSL_AD_UNEXPECTED_MESSAGE, SSL_R_UNEXPECTED_RECORD);
+            printf("ooo\n");
             return -1;
         }
     }
 }
 
+
+
+
+//////////////////////////////////////////////////////////////
 /*
  * Returns true if the current rrec was sent in SSLv2 backwards compatible
  * format and false otherwise.

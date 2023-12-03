@@ -1620,11 +1620,12 @@ int tls_get_message_header(SSL_CONNECTION *s, int *mt)
                                             SSL3_HM_HEADER_LENGTH - s->init_num,
                                             0, &readbytes);
             if (i <= 0) {
+                printf("sssss\n");
                 s->rwstate = SSL_READING;
                 return 0;
             }
             if (recvd_type == SSL3_RT_CHANGE_CIPHER_SPEC) {
-                printf("recvd_type run\n");
+               // printf("recvd_type run\n");
                 /*
                  * A ChangeCipherSpec must be a single byte and may not occur
                  * in the middle of a handshake message.
@@ -1632,6 +1633,7 @@ int tls_get_message_header(SSL_CONNECTION *s, int *mt)
                 if (s->init_num != 0 || readbytes != 1 || p[0] != SSL3_MT_CCS) {
                     SSLfatal(s, SSL_AD_UNEXPECTED_MESSAGE,
                              SSL_R_BAD_CHANGE_CIPHER_SPEC);
+                //    printf("[p[[[[\n");
                     return 0;
                 }
                 if (s->statem.hand_state == TLS_ST_BEFORE
@@ -1643,6 +1645,7 @@ int tls_get_message_header(SSL_CONNECTION *s, int *mt)
                      * not return success until we see the second ClientHello
                      * with a valid cookie.
                      */
+                //    printf("whywhywhy\n");
                     return 0;
                 }
                 s->s3.tmp.message_type = *mt = SSL3_MT_CHANGE_CIPHER_SPEC;
@@ -1653,6 +1656,7 @@ int tls_get_message_header(SSL_CONNECTION *s, int *mt)
             } else if (recvd_type != SSL3_RT_HANDSHAKE) {
                 SSLfatal(s, SSL_AD_UNEXPECTED_MESSAGE,
                          SSL_R_CCS_RECEIVED_EARLY);
+               // printf("whywhywhywwwwwww\n");
                 return 0;
             }
             s->init_num += readbytes;
@@ -1717,11 +1721,13 @@ int tls_get_message_header(SSL_CONNECTION *s, int *mt)
 
 int tls_get_message_body(SSL_CONNECTION *s, size_t *len)
 {
+
     //printf("running tls_get_message_body\n");
     size_t n, readbytes;
     unsigned char *p;
     int i;
     SSL *ssl = SSL_CONNECTION_GET_SSL(s);
+    //printf(" hand_state_tls_get_message_body -> %s\n", SSL_state_string_long(ssl));
 
     if (s->s3.tmp.message_type == SSL3_MT_CHANGE_CIPHER_SPEC) {
         printf("/* We've already read everything in */\n");
