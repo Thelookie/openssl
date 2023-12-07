@@ -851,11 +851,11 @@ MSG_PROCESS_RETURN tls_process_finished(SSL_CONNECTION *s, PACKET *pkt)
         */
         s->statem.enc_read_state = ENC_READ_STATE_VALID;
         if (s->rlayer.rrlmethod->set_plain_alerts != NULL)
-            s->rlayer.rrlmethod->set_plain_alerts(s->rlayer.rrl, 0);
+           s->rlayer.rrlmethod->set_plain_alerts(s->rlayer.rrl, 0);
         if (s->post_handshake_auth != SSL_PHA_REQUESTED)
             s->statem.cleanuphand = 1;
         if (SSL_CONNECTION_IS_TLS13(s)
-            && !tls13_save_handshake_digest_for_pha(s)) {
+            && !tls13_save_handshake_digest_for_pha(s)) {   
                 /* SSLfatal() already called */
                 return MSG_PROCESS_ERROR;
         }
@@ -992,6 +992,12 @@ MSG_PROCESS_RETURN tls_process_finished(SSL_CONNECTION *s, PACKET *pkt)
 
     if(s->early_data_state == SSL_DNS_FINISHED_READING && s->server){
         SSL tmp = *ssl;
+        printf("s->master_secret: \n");
+        puts(s->master_secret);
+        printf("s->handshake_secret: \n");
+        puts( s->handshake_secret);
+     //   printf("\nsame? :  %d\n", (s->master_secret == s->handshake_secret));
+        printf("same2? :  %d\n", strcmp(s->master_secret, s->handshake_secret));
         printf("running in statem_lib.c server SSL_DNS_FINISHED_READING\n");
         size_t dummy;
         if(!tls13_change_cipher_state(s, SSL3_CC_HANDSHAKE | SSL3_CHANGE_CIPHER_CLIENT_READ)){
@@ -1003,9 +1009,14 @@ MSG_PROCESS_RETURN tls_process_finished(SSL_CONNECTION *s, PACKET *pkt)
                                                          || !tls13_change_cipher_state(s,
                                                                                        SSL3_CC_APPLICATION | SSL3_CHANGE_CIPHER_SERVER_READ)) {
             /* SSLfatal() already called */
+            printf("it happend!\n");
             return MSG_PROCESS_ERROR;
             }
             // server read application data sent by client
+        printf("same3? :  %d\n", strcmp(s->master_secret, s->handshake_secret));
+        printf("after gen master sec|| s->master_secret: %s\n", s->master_secret);
+        printf("after gen master sec|| s->handshake_secret: %s\n", s->handshake_secret);
+        printf("same2? :  %d\n", (s->master_secret == s->handshake_secret));
         char buf[100];
         SSL_read(ssl, buf, 100);
         printf("============================================\n");
@@ -1023,6 +1034,7 @@ MSG_PROCESS_RETURN tls_process_finished(SSL_CONNECTION *s, PACKET *pkt)
         s->rlayer.rrlmethod->set_first_handshake(s->rlayer.rrl, 0);
 
     return MSG_PROCESS_FINISHED_READING;
+
 }
 
 CON_FUNC_RETURN tls_construct_change_cipher_spec(SSL_CONNECTION *s, WPACKET *pkt)
@@ -1633,7 +1645,7 @@ int tls_get_message_header(SSL_CONNECTION *s, int *mt)
                 if (s->init_num != 0 || readbytes != 1 || p[0] != SSL3_MT_CCS) {
                     SSLfatal(s, SSL_AD_UNEXPECTED_MESSAGE,
                              SSL_R_BAD_CHANGE_CIPHER_SPEC);
-                //    printf("[p[[[[\n");
+               
                     return 0;
                 }
                 if (s->statem.hand_state == TLS_ST_BEFORE
@@ -1645,7 +1657,7 @@ int tls_get_message_header(SSL_CONNECTION *s, int *mt)
                      * not return success until we see the second ClientHello
                      * with a valid cookie.
                      */
-                //    printf("whywhywhy\n");
+               
                     return 0;
                 }
                 s->s3.tmp.message_type = *mt = SSL3_MT_CHANGE_CIPHER_SPEC;

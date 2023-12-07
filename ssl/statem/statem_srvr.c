@@ -165,7 +165,7 @@ static int ossl_statem_server13_read_transition(SSL_CONNECTION *s, int mt)
         break;
 
     case TLS_ST_SR_CLNT_HELLO:
-            printf("received state is TLS_ST_SR_CLNT_HELLO\n");
+          //  printf("received state is TLS_ST_SR_CLNT_HELLO\n");
             if(s->early_data_state == SSL_DNS_CCS){
                 s->early_data_state = SSL_DNS_FINISHED_READING;
                 st->hand_state = TLS_ST_SR_DNS_FINISHED_APPLICATION;
@@ -363,7 +363,7 @@ int ossl_statem_server_read_transition_reduce(SSL_CONNECTION *s, int mt) {
     OSSL_STATEM *st = &s->statem;
 
     if (SSL_CONNECTION_IS_TLS13(s)) {
-        printf("(ossl_statem_reduce) tls13 now\n");
+      //  printf("(ossl_statem_reduce) tls13 now\n");
         if (!ossl_statem_server13_read_transition(s, mt))
             goto err;
         return 1;
@@ -413,14 +413,12 @@ int ossl_statem_server_read_transition_reduce(SSL_CONNECTION *s, int mt) {
                         return 1;
                     }
                 } else {
-                    st->
-                            hand_state = TLS_ST_SR_KEY_EXCH;
+                    st->hand_state = TLS_ST_SR_KEY_EXCH;
                     return 1;
                 }
             } else if (s->s3.tmp.cert_request) {
                 if (mt == SSL3_MT_CERTIFICATE) {
-                    st->
-                            hand_state = TLS_ST_SR_CERT;
+                    st->hand_state = TLS_ST_SR_CERT;
                     return 1;
                 }
             }
@@ -451,14 +449,12 @@ int ossl_statem_server_read_transition_reduce(SSL_CONNECTION *s, int mt) {
  * not sent. Also for GOST ciphersuites when the client uses
  * its key from the certificate for key exchange.
  */
-                    st->
-                            hand_state = TLS_ST_SR_CHANGE;
+                    st->hand_state = TLS_ST_SR_CHANGE;
                     return 1;
                 }
             } else {
                 if (mt == SSL3_MT_CERTIFICATE_VERIFY) {
-                    st->
-                            hand_state = TLS_ST_SR_CERT_VRFY;
+                    st->hand_state = TLS_ST_SR_CERT_VRFY;
                     return 1;
                 }
             }
@@ -466,8 +462,7 @@ int ossl_statem_server_read_transition_reduce(SSL_CONNECTION *s, int mt) {
 
         case TLS_ST_SR_CERT_VRFY:
             if (mt == SSL3_MT_CHANGE_CIPHER_SPEC) {
-                st->
-                        hand_state = TLS_ST_SR_CHANGE;
+                st->hand_state = TLS_ST_SR_CHANGE;
                 return 1;
             }
             break;
@@ -476,15 +471,13 @@ int ossl_statem_server_read_transition_reduce(SSL_CONNECTION *s, int mt) {
 #ifndef OPENSSL_NO_NEXTPROTONEG
             if (s->s3.npn_seen) {
                 if (mt == SSL3_MT_NEXT_PROTO) {
-                    st->
-                            hand_state = TLS_ST_SR_NEXT_PROTO;
+                    st->hand_state = TLS_ST_SR_NEXT_PROTO;
                     return 1;
                 }
             } else {
 #endif
                 if (mt == SSL3_MT_FINISHED) {
-                    st->
-                            hand_state = TLS_ST_SR_FINISHED;
+                    st->hand_state = TLS_ST_SR_FINISHED;
                     return 1;
                 }
 #ifndef OPENSSL_NO_NEXTPROTONEG
@@ -495,8 +488,7 @@ int ossl_statem_server_read_transition_reduce(SSL_CONNECTION *s, int mt) {
 #ifndef OPENSSL_NO_NEXTPROTONEG
         case TLS_ST_SR_NEXT_PROTO:
             if (mt == SSL3_MT_FINISHED) {
-                st->
-                        hand_state = TLS_ST_SR_FINISHED;
+                st->hand_state = TLS_ST_SR_FINISHED;
                 return 1;
             }
             break;
@@ -504,8 +496,7 @@ int ossl_statem_server_read_transition_reduce(SSL_CONNECTION *s, int mt) {
 
         case TLS_ST_SW_FINISHED:
             if (mt == SSL3_MT_CHANGE_CIPHER_SPEC) {
-                st->
-                        hand_state = TLS_ST_SR_CHANGE;
+                st->hand_state = TLS_ST_SR_CHANGE;
                 return 1;
             }
             break;
@@ -520,10 +511,8 @@ int ossl_statem_server_read_transition_reduce(SSL_CONNECTION *s, int mt) {
  * CCS messages don't have a message sequence number so this is probably
  * because of an out-of-order CCS. We'll just drop it.
  */
-        s->
-                init_num = 0;
-        s->
-                rwstate = SSL_READING;
+        s->init_num = 0;
+        s->rwstate = SSL_READING;
         rbio = SSL_get_rbio(SSL_CONNECTION_GET_SSL(s));
         BIO_clear_retry_flags(rbio);
         BIO_set_retry_read(rbio);

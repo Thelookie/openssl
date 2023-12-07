@@ -4759,7 +4759,7 @@ int SSL_do_handshake_reduce(SSL *s)
     struct timespec begin;
     clock_gettime(CLOCK_MONOTONIC, &begin);
     printf("==============================================\n");
-    printf("start do handshake reduce\n");
+    printf("start do handshake reduce");
     printf(" : %f\n",(begin.tv_sec) + (begin.tv_nsec) / 1000000000.0);
     printf("==============================================\n");
 
@@ -4787,11 +4787,11 @@ int SSL_do_handshake_reduce(SSL *s)
         }else{
             if(sc->server){
                 
-                printf("go ossl_statem_accept_reduce\n");
+               // printf("go ossl_statem_accept_reduce\n");
                 sc->handshake_func = ossl_statem_accept_reduce;
             }
             else {   
-            printf("ossl_statem_connect_reduce\n");
+         //   printf("ossl_statem_connect_reduce\n");
             sc->handshake_func = ossl_statem_connect_reduce;
             }
             ret = sc->handshake_func(s);

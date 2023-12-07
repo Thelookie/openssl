@@ -1688,7 +1688,7 @@ EXT_RETURN tls_construct_stoc_key_share(SSL_CONNECTION *s, WPACKET *pkt,
                     skey = ssl_generate_pkey(s, ckey);
                 }
 
-        skey = ssl_generate_pkey(s, ckey);
+       // skey = ssl_generate_pkey(s, ckey);
         if (skey == NULL) {
             SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_SSL_LIB);
             return EXT_RETURN_FAIL;
@@ -1714,7 +1714,7 @@ EXT_RETURN tls_construct_stoc_key_share(SSL_CONNECTION *s, WPACKET *pkt,
         /*
          * This causes the crypto state to be updated based on the derived keys
          */
-        s->s3.tmp.pkey = skey;
+       // s->s3.tmp.pkey = skey;
         if (ssl_derive(s, skey, ckey, 1) == 0) {
             /* SSLfatal() already called */
             return EXT_RETURN_FAIL;

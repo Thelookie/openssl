@@ -274,7 +274,7 @@ void ossl_statem_check_finish_init(SSL_CONNECTION *s, int sending)
     } else {
         if (s->early_data_state == SSL_EARLY_DATA_FINISHED_READING
                 && s->statem.hand_state == TLS_ST_EARLY_DATA)
-            ossl_statem_set_in_init(s, 1);
+                ossl_statem_set_in_init(s, 1);
     }
 }
 
@@ -330,7 +330,7 @@ int ossl_statem_accept_reduce(SSL *s) {
         return -1;
     }
     else
-    printf("go state_machine_reduce\n");
+   // printf("go state_machine_reduce\n");
    // printf("statem_status in statem_accept_reduce: %d\n",sc->statem.state);
     return state_machine_reduce(sc, 1);
 }
@@ -572,7 +572,7 @@ static int state_machine_reduce(SSL_CONNECTION *s, int server) {
     int ret = -1;
     int ssret;
     SSL *ssl = SSL_CONNECTION_GET_SSL(s);
-    printf("state? %d\n", st->state);
+   // printf("state? %d\n", st->state);
     if (st->state == MSG_FLOW_ERROR) {
         printf("MSG_FLOW_ERROR");
         /* Shouldn't have been called if we're already in the error state */
@@ -725,7 +725,7 @@ static int state_machine_reduce(SSL_CONNECTION *s, int server) {
             ssret = read_state_machine_reduce(s); // 이걸로 SERVER HELLO 읽어서 SERVER HANDSHAKE TRAFFIC SECRET 생성;
             if (ssret == SUB_STATE_FINISHED) {
                 printf("ssret is SUB_STATE_FINISHED.\n");
-                //printf("st->state : MSG_FLOW_WRITING.\n");
+                printf("st->state : MSG_FLOW_WRITING.\n");
                 st->state = MSG_FLOW_WRITING;
                 init_write_state_machine(s);
             } else {
@@ -1412,7 +1412,7 @@ static SUB_STATE_RETURN write_state_machine(SSL_CONNECTION *s)
 
 
 static SUB_STATE_RETURN write_state_machine_reduce(SSL_CONNECTION *s) {
-    printf("write_state_machine_reduce: start run\n");
+    //printf("write_state_machine_reduce: start run\n");
     OSSL_STATEM *st = &s->statem;
     int ret;
     //SSL *ssl = SSL_CONNECTION_GET_SSL(s);
@@ -1459,7 +1459,7 @@ static SUB_STATE_RETURN write_state_machine_reduce(SSL_CONNECTION *s) {
                 }
                 switch (transition(s)) {
                     case WRITE_TRAN_CONTINUE:
-                        printf("transition(s) is WRITE_TRAN_CONTINUE in write_state_machine func \n");
+                       // printf("transition(s) is WRITE_TRAN_CONTINUE in write_state_machine func \n");
                         st->write_state = WRITE_STATE_PRE_WORK;
                         st->write_state_work = WORK_MORE_A;
                         break;

@@ -646,7 +646,7 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
         s->rlayer.curr_rec = s->rlayer.num_recs = 0;
         do {
             rr = &s->rlayer.tlsrecs[s->rlayer.num_recs];
-            printf("vvvv: %d\n", rr->type);
+          //  printf("vvvv: %d\n", rr->type);
             ret = HANDLE_RLAYER_READ_RETURN(s,
                     s->rlayer.rrlmethod->read_record(s->rlayer.rrl,
                                                      &rr->rechandle,
@@ -662,6 +662,7 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
         } while (s->rlayer.rrlmethod->processed_read_pending(s->rlayer.rrl)
                  && s->rlayer.num_recs < SSL_MAX_PIPELINES);
     }
+    //printf("rr->length: %ld\n", rr->length);
     rr = &s->rlayer.tlsrecs[s->rlayer.curr_rec];
 
     if (s->rlayer.handshake_fragment_len > 0
@@ -701,7 +702,7 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
       //  printf("eee\n");
         return 0;
     }
-    printf("aaa\n");
+   // printf("aaa\n");
     printf("type: %d\n", type);
     printf("rr->type: %d\n",rr->type);
     if (type == rr->type
@@ -718,13 +719,15 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
          * make sure that we are not getting application data when we are
          * doing a handshake for the first time
          */
+        SSL_in_init(ssl);
+        /*
         if (SSL_in_init(ssl) && type == SSL3_RT_APPLICATION_DATA
                 && SSL_IS_FIRST_HANDSHAKE(s)) {
             printf("what's matter\n");
             SSLfatal(s, SSL_AD_UNEXPECTED_MESSAGE, SSL_R_APP_DATA_IN_HANDSHAKE);
             return -1;
         }
-
+        */
         if (type == SSL3_RT_HANDSHAKE
             && rr->type == SSL3_RT_CHANGE_CIPHER_SPEC
             && s->rlayer.handshake_fragment_len > 0) {
@@ -750,7 +753,7 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
         totalbytes = 0;
         curr_rec = s->rlayer.curr_rec;
         do {
-            printf("do\n");
+            //printf("do\n");
             if (len - totalbytes > rr->length)
                 n = rr->length;
             else
@@ -1032,7 +1035,7 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
         }
         goto start;
     }
-
+    printf("before switch rr->type: %d\n", rr->type);
     switch (rr->type) {
     default:
         /*
