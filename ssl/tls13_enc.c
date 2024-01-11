@@ -26,7 +26,7 @@ static const unsigned char label_prefix[] = "\x74\x6C\x73\x31\x33\x20";
 /*
  * Given a |secret|; a |label| of length |labellen|; and |data| of length
  * |datalen| (e.g. typically a hash of the handshake messages), derive a new
- * secret |outlen| bytes long and store it in the location pointed to be |out|.
+ * secret |outlen| bytes long and store it in the lofgcation pointed to be |out|.
  * The |data| value may be zero length. Any errors will be treated as fatal if
  * |fatal| is set. Returns 1 on success  0 on failure.
  * If |raise_error| is set, ERR_raise is called on failure.
@@ -357,13 +357,15 @@ size_t tls13_final_finish_mac(SSL_CONNECTION *s, const char *str, size_t slen,
     } else if (SSL_IS_FIRST_HANDSHAKE(s)) {
         key = s->client_finished_secret;
     } else {
-        if (!tls13_derive_finishedkey(s, md,
+       /* if (!tls13_derive_finishedkey(s, md,
                                       s->client_app_traffic_secret,
                                       finsecret, hashlen))
             goto err;
         key = finsecret;
+        */
+        key = s->client_finished_secret;
     }
-
+    printf("final key: %s\n", key);
     if (!EVP_Q_mac(sctx->libctx, "HMAC", sctx->propq, mdname,
                    params, key, hashlen, hash, hashlen,
                    /* outsize as per sizeof(peer_finish_md) */
@@ -446,8 +448,7 @@ static int derive_secret_key_and_iv(SSL_CONNECTION *s, const EVP_MD *md,
             algenc = s->psksession->cipher->algorithm_enc;
         } else {
             SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_EVP_LIB);
-            return 0;
-        }
+         }
         if (algenc & (SSL_AES128CCM8 | SSL_AES256CCM8))
             *taglen = EVP_CCM8_TLS_TAG_LEN;
          else
@@ -715,8 +716,10 @@ int tls13_change_cipher_state(SSL_CONNECTION *s, int which)
             /* SSLfatal() already called */
             goto err;
         }
-    } else if (label == client_application_traffic)
+    } else if (label == client_application_traffic){
+        printf("\nhere2\n");
         memcpy(s->client_app_traffic_secret, secret, hashlen);
+    }
 
     if (!ssl_log_secret(s, log_label, secret, hashlen)) {
         /* SSLfatal() already called */
