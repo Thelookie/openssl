@@ -585,12 +585,14 @@ int tls_parse_ctos_psk_kex_modes(SSL_CONNECTION *s, PACKET *pkt,
 int tls_parse_ctos_key_share(SSL_CONNECTION *s, PACKET *pkt,
                              unsigned int context, X509 *x, size_t chainidx)
 {
+    //printf("tls_parse_ctos_key_share\n");
 #ifndef OPENSSL_NO_TLS1_3
     unsigned int group_id;
     PACKET key_share_list, encoded_pt;
     const uint16_t *clntgroups, *srvrgroups;
     size_t clnt_num_groups, srvr_num_groups;
     int found = 0;
+    const TLS_GROUP_INFO *ginf = NULL;
 
     if (s->hit && (s->ext.psk_kex_mode & TLSEXT_KEX_MODE_FLAG_KE_DHE) == 0)
         return 1;
@@ -632,13 +634,14 @@ int tls_parse_ctos_key_share(SSL_CONNECTION *s, PACKET *pkt,
     }
 
     while (PACKET_remaining(&key_share_list) > 0) {
+        
         if (!PACKET_get_net_2(&key_share_list, &group_id)
                 || !PACKET_get_length_prefixed_2(&key_share_list, &encoded_pt)
                 || PACKET_remaining(&encoded_pt) == 0) {
             SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_R_LENGTH_MISMATCH);
             return 0;
         }
-
+        
         /*
          * If we already found a suitable key_share we loop through the
          * rest to verify the structure, but don't process them.
@@ -649,14 +652,14 @@ int tls_parse_ctos_key_share(SSL_CONNECTION *s, PACKET *pkt,
         /*
          * If we sent an HRR then the key_share sent back MUST be for the group
          * we requested, and must be the only key_share sent.
-         */
+         
         if (s->s3.group_id != 0
                 && (group_id != s->s3.group_id
                     || PACKET_remaining(&key_share_list) != 0)) {
             SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_KEY_SHARE);
             return 0;
         }
-
+        */
         /* Check if this share is in supported_groups sent from client */
         if (!check_in_list(s, group_id, clntgroups, clnt_num_groups, 0)) {
             SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_KEY_SHARE);
@@ -685,14 +688,62 @@ int tls_parse_ctos_key_share(SSL_CONNECTION *s, PACKET *pkt,
                    SSL_R_UNABLE_TO_FIND_ECDH_PARAMETERS);
             return 0;
         }
+        
+        //============================
+        
+        if ((ginf = tls1_group_id_lookup(SSL_CONNECTION_GET_CTX(s),
+                                         group_id)) == NULL) {
+            SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_KEY_SHARE);
+            return 0;
+        }
+        //printf("ginf->is_kem: %d\n",ginf->is_kem);
+        /*
+        if (!PACKET_as_length_prefixed_2(pkt, &encoded_pt)
+                || PACKET_remaining(&encoded_pt) == 0) {
+            SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_R_LENGTH_MISMATCH);
+            return 0;
+        }
+        */
+        
+        if (PACKET_remaining(&encoded_pt) == 0) {
+            SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_R_LENGTH_MISMATCH);
+            return 0;
+        }
+        if(ginf->is_kem){
+            printf("DNS-BASED KEM MODE\n");
+            const unsigned char *ct = PACKET_data(&encoded_pt);
+            size_t ctlen = PACKET_remaining(&encoded_pt);
 
+            EVP_PKEY *skey = NULL;
+            FILE *f;
+            f = fopen("dns/keyshare/kyber_priv.pem", "rb");
+            PEM_read_PrivateKey(f, &skey, NULL, NULL);
+            PEM_write_PrivateKey(stdout, skey, NULL, NULL, 0, NULL, NULL);
+            fclose(f);
+
+            printf("ct: %s\n", ct);
+            printf("ctlen: %ld\n", ctlen);
+
+            if (ssl_decapsulate(s, skey, ct, ctlen, 1) == 0) {
+                return 0;
+            }
+
+        }
+         printf("444\n");
+
+
+        s->s3.did_kex = 1;
+        
+        //============================
+        /*
         if (tls13_set_encoded_pub_key(s->s3.peer_tmp,
                                       PACKET_data(&encoded_pt),
                                       PACKET_remaining(&encoded_pt)) <= 0) {
             SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_ECPOINT);
             return 0;
         }
-
+        */
+        
         found = 1;
     }
 #endif
@@ -1678,7 +1729,7 @@ EXT_RETURN tls_construct_stoc_key_share(SSL_CONNECTION *s, WPACKET *pkt,
         //            PEM_read_PrivateKey(f, &skey, NULL, NULL);
         //            fclose(f);
 
-                } else {
+        } else {
                     //nothing
                     //read server key from the file already in statem_srvr.c
         //          printf("SSL_DNS_CCS read server key from memory\n");
@@ -1686,7 +1737,7 @@ EXT_RETURN tls_construct_stoc_key_share(SSL_CONNECTION *s, WPACKET *pkt,
         //          skey = s->s3.tmp.pkey;
                     // generate skey for normal TLS 
                     skey = ssl_generate_pkey(s, ckey);
-                }
+        }
 
        // skey = ssl_generate_pkey(s, ckey);
         if (skey == NULL) {
@@ -1755,33 +1806,46 @@ EXT_RETURN tls_construct_stoc_key_share(SSL_CONNECTION *s, WPACKET *pkt,
         //        *s = tmp;
     } else {
         /* KEM mode */
-        unsigned char *ct = NULL;
-        size_t ctlen = 0;
+        printf("extensions_srvr KEM mode\n");
+        if(s->s3.tmp.pkey != NULL){
+            struct timespec begin;
+            clock_gettime(CLOCK_MONOTONIC, &begin);
+            printf("Kyber key is prepared : %f\n",(begin.tv_sec) + (begin.tv_nsec) / 1000000000.0);
 
-        /*
-         * This does not update the crypto state.
-         *
-         * The generated pms is stored in `s->s3.tmp.pms` to be later used via
-         * ssl_gensecret().
-         */
-        if (ssl_encapsulate(s, ckey, &ct, &ctlen, 0) == 0) {
-            /* SSLfatal() already called */
-            return EXT_RETURN_FAIL;
+
         }
+        else{
+            unsigned char *ct = NULL;
+            size_t ctlen = 0;
 
-        if (ctlen == 0) {
-            SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+            /*
+             * This does not update the crypto state.
+             *
+             * The generated pms is stored in `s->s3.tmp.pms` to be later used via
+             * ssl_gensecret().
+             */
+            //printf("ssl_encapsulate\n");
+            if (ssl_encapsulate(s, ckey, &ct, &ctlen, 0) == 0) {
+                /* SSLfatal() already called */
+                return EXT_RETURN_FAIL;
+            }
+
+            if (ctlen == 0) {
+                SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+                OPENSSL_free(ct);
+                return EXT_RETURN_FAIL;
+            }
+
+            if (!WPACKET_sub_memcpy_u16(pkt, ct, ctlen)
+                    || !WPACKET_close(pkt)) {
+                SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+                OPENSSL_free(ct);
+                return EXT_RETURN_FAIL;
+            }
             OPENSSL_free(ct);
-            return EXT_RETURN_FAIL;
-        }
 
-        if (!WPACKET_sub_memcpy_u16(pkt, ct, ctlen)
-                || !WPACKET_close(pkt)) {
-            SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
-            OPENSSL_free(ct);
-            return EXT_RETURN_FAIL;
         }
-        OPENSSL_free(ct);
+        
 
         /*
          * This causes the crypto state to be updated based on the generated pms

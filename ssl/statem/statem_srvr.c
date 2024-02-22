@@ -1578,7 +1578,7 @@ WORK_STATE ossl_statem_server_post_process_message(SSL_CONNECTION *s,
     }
 }
 
-WORK_STATE ossl_statem_server_post_process_message_reduce(SSL_CONNECTION *s, WORK_STATE wst) {
+WORK_STATE ossl_statem_server_post_process_message_reduce(SSL_CONNECTION *s, WORK_STATE wst, PACKET* pkt) {
     OSSL_STATEM *st = &s->statem;
     printf("\npost_process_message: %d\n", st->hand_state);
     switch (st->hand_state) {
@@ -1588,7 +1588,7 @@ WORK_STATE ossl_statem_server_post_process_message_reduce(SSL_CONNECTION *s, WOR
             return WORK_ERROR;
 
         case TLS_ST_SR_CLNT_HELLO:
-            return tls_post_process_client_hello_reduce(s, wst);
+            return tls_post_process_client_hello_reduce(s, wst, pkt);
 
         case TLS_ST_SR_KEY_EXCH:
             return tls_post_process_client_key_exchange(s, wst);
@@ -1767,7 +1767,7 @@ MSG_PROCESS_RETURN tls_process_client_hello(SSL_CONNECTION *s, PACKET *pkt)
      * First, parse the raw ClientHello data into the CLIENTHELLO_MSG structure.
      */
     clienthello->isv2 = RECORD_LAYER_is_sslv2_record(&s->rlayer);
-    printf("clienthello->isv2: %d\n",clienthello->isv2);
+    //printf("clienthello->isv2: %d\n",clienthello->isv2);
     PACKET_null_init(&cookie);
 
     if (clienthello->isv2) {
@@ -1948,7 +1948,7 @@ MSG_PROCESS_RETURN tls_process_client_hello(SSL_CONNECTION *s, PACKET *pkt)
 
 static int tls_early_post_process_client_hello(SSL_CONNECTION *s)
 {
-    //printf("tls_early_post_process_client_hello\n");
+    printf("tls_early_post_process_client_hello\n");
     unsigned int j;
     int i, al = SSL_AD_INTERNAL_ERROR;
     int protverr;
@@ -1964,11 +1964,10 @@ static int tls_early_post_process_client_hello(SSL_CONNECTION *s)
     DOWNGRADE dgrd = DOWNGRADE_NONE;
     SSL_CTX *sctx = SSL_CONNECTION_GET_CTX(s);
     SSL *ssl = SSL_CONNECTION_GET_SSL(s);
-   // printf("----tls_early_post_process_client_hello %s\n",SSL_state_string_long(SSL_CONNECTION_GET_SSL(s)));
+   printf("----tls_early_post_process_client_hello %s\n",SSL_state_string_long(SSL_CONNECTION_GET_SSL(s)));
     /* Finished parsing the ClientHello, now we can start processing it */
     /* Give the ClientHello callback a crack at things */
     if (sctx->client_hello_cb != NULL) {
-        printf("bbbb\n");
         /* A failure in the ClientHello callback terminates the connection. */
         switch (sctx->client_hello_cb(ssl, &al, sctx->client_hello_cb_arg)) {
         case SSL_CLIENT_HELLO_SUCCESS:
@@ -1987,9 +1986,7 @@ static int tls_early_post_process_client_hello(SSL_CONNECTION *s)
     memcpy(s->s3.client_random, clienthello->random, SSL3_RANDOM_SIZE);
 
     /* Choose the version */
-
     if (clienthello->isv2) {
-        printf("cccc\n");
         if (clienthello->legacy_version == SSL2_VERSION
                 || (clienthello->legacy_version & 0xff00)
                    != (SSL3_VERSION_MAJOR << 8)) {
@@ -2024,7 +2021,6 @@ static int tls_early_post_process_client_hello(SSL_CONNECTION *s)
         SSLfatal(s, SSL_AD_PROTOCOL_VERSION, protverr);
         goto err;
     }
-
 
     /* TLSv1.3 specifies that a ClientHello must end on a record boundary */
     if (SSL_CONNECTION_IS_TLS13(s)
@@ -2790,7 +2786,7 @@ CON_FUNC_RETURN tls_construct_server_hello(SSL_CONNECTION *s, WPACKET *pkt)
     return CON_FUNC_SUCCESS;
 }
 
-WORK_STATE tls_post_process_client_hello_reduce(SSL_CONNECTION *s, WORK_STATE wst) {
+WORK_STATE tls_post_process_client_hello_reduce(SSL_CONNECTION *s, WORK_STATE wst, PACKET* pkt) {
     printf("enterd to tls_post_process_client_hello_reduce\n");
 
     const SSL_CIPHER *cipher;
@@ -2916,51 +2912,41 @@ WORK_STATE tls_post_process_client_hello_reduce(SSL_CONNECTION *s, WORK_STATE ws
     }
 #endif
     if(s->early_data_state == SSL_DNS_CCS){
-        printf("fix the server's ecdhe keyshare\n");
+        printf("fix the server's kyber512 keyshare\n");
 #include <time.h>
-        printf("    read server's ecdhe keyshare from file ");
+        //printf("    read server's kyber512 keyshare from file ");
         struct timespec begin;
         clock_gettime(CLOCK_MONOTONIC, &begin);
         printf(": %f\n",(begin.tv_sec) + (begin.tv_nsec) / 1000000000.0);
-        unsigned char *encodedPoint;
-        size_t encoded_pt_len = 0;
-        EVP_PKEY *ckey = s->s3.peer_tmp, *skey = NULL, *skey1 = NULL;
-        FILE *f;
-        f = fopen("dns/keyshare/privKey.pem", "rb");
-        PEM_read_PrivateKey(f, &skey, NULL, NULL);
-        fclose(f);
+        //unsigned char *encodedPoint;
+        //size_t encoded_pt_len = 0;
+        //EVP_PKEY *ckey = s->s3.peer_tmp, *skey = NULL;
+        //FILE *f;
+        //f = fopen("dns/keyshare/kyber512_privkey.pem", "rb");
+        //PEM_read_PrivateKey(f, &skey, NULL, NULL);
+        //fclose(f);
         //printf("read pem done!\n");
 
-        if (skey == NULL) {
-            printf("skey is NULL\n");
-            SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_MALLOC_FAILURE);
-            goto err;
-        }
-        ASN1_PCTX *ctx = ASN1_PCTX_new();  //for printing pubkey
-        BIO *bio2 = BIO_new_fp(stdout, BIO_NOCLOSE);//for printing pubkey
-        encoded_pt_len = EVP_PKEY_get1_encoded_public_key(skey, &encodedPoint);
-        printf("encoded_pt_len: ");
-        EVP_PKEY_get1_encoded_public_key(skey, &encodedPoint);
-        printf("pubkey from client: ");
-        EVP_PKEY_print_public(bio2, ckey, 1, NULL); //for printing pubkey
-        BIO_free(bio2);
-        if (encoded_pt_len == 0) {
-            printf("\nencoded_pt_len is NULL\n");
-            SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_EC_LIB);
-            EVP_PKEY_free(skey);
-            goto err;
-        }
+    
 
-        /*
+            /*
              * This causes the crypto state to be updated based on the derived keys
              */
-        s->s3.tmp.pkey = skey;
+        //s->s3.tmp.pkey = skey;
+        /*
         if (ssl_derive(s, skey, ckey, 1) == 0) {
             printf("ssl_derive\n");
-            /* SSLfatal() already called */
+
             goto err;
         }
-        printf("\nssl_derive finished\n");
+        */
+        
+        
+        //if (ssl_gensecret(s, s->s3.tmp.pms, s->s3.tmp.pmslen) == 0) {
+        //    /* SSLfatal() already called */
+        //    return EXT_RETURN_FAIL;
+        //}
+
     }
     if(s->early_data_state == SSL_DNS_CCS){
        // printf("  bbbb: %s\n",SSL_state_string_long(SSL_CONNECTION_GET_SSL(s)));
