@@ -267,6 +267,8 @@ int EVP_PKEY_decapsulate(EVP_PKEY_CTX *ctx,
         ERR_raise(ERR_LIB_EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
         return -2;
     }
+        printf("ctx->op.encap.kem->type_name: %s\n", ctx->op.encap.kem->type_name);
+
     return ctx->op.encap.kem->decapsulate(ctx->op.encap.algctx,
                                           secret, secretlen, in, inlen);
 }

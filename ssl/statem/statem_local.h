@@ -112,7 +112,7 @@ MSG_PROCESS_RETURN ossl_statem_server_process_message(SSL_CONNECTION *s,
 MSG_PROCESS_RETURN ossl_statem_server_process_message_reduce(SSL_CONNECTION *s, PACKET *pkt);
 WORK_STATE ossl_statem_server_post_process_message(SSL_CONNECTION *s,
                                                    WORK_STATE wst);
-WORK_STATE ossl_statem_server_post_process_message_reduce(SSL_CONNECTION *s, WORK_STATE wst);
+WORK_STATE ossl_statem_server_post_process_message_reduce(SSL_CONNECTION *s, WORK_STATE wst, PACKET* pkt);
 
 /* Functions for getting new message data */
 __owur int tls_get_message_header(SSL_CONNECTION *s, int *mt);
@@ -208,7 +208,7 @@ __owur MSG_PROCESS_RETURN tls_process_client_hello(SSL_CONNECTION *s,
                                                    PACKET *pkt);
 __owur WORK_STATE tls_post_process_client_hello(SSL_CONNECTION *s,
                                                 WORK_STATE wst);
-__owur WORK_STATE tls_post_process_client_hello_reduce(SSL_CONNECTION *s, WORK_STATE wst);
+__owur WORK_STATE tls_post_process_client_hello_reduce(SSL_CONNECTION *s, WORK_STATE wst, PACKET* pkt);
 __owur CON_FUNC_RETURN tls_construct_server_hello(SSL_CONNECTION *s,
                                                   WPACKET *pkt);
 __owur CON_FUNC_RETURN dtls_construct_hello_verify_request(SSL_CONNECTION *s,

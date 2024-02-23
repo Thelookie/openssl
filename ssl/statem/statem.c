@@ -1014,11 +1014,11 @@ static SUB_STATE_RETURN read_state_machine_reduce(SSL_CONNECTION *s) {
     int (*transition)(SSL_CONNECTION *s, int mt);
     PACKET pkt;
     MSG_PROCESS_RETURN (*process_message)(SSL_CONNECTION *s, PACKET *pkt);
-    WORK_STATE (*post_process_message)(SSL_CONNECTION *s, WORK_STATE wst);
+    WORK_STATE (*post_process_message)(SSL_CONNECTION *s, WORK_STATE wst, PACKET *pkt);
     size_t (*max_message_size)(SSL_CONNECTION *s);
     void (*cb)(const SSL *ssl, int type, int val) = NULL;
     SSL *ssl = SSL_CONNECTION_GET_SSL(s);
-   //printf("  aaaaa: %s\n",SSL_state_string_long(SSL_CONNECTION_GET_SSL(s)));
+   SSL_state_string_long(SSL_CONNECTION_GET_SSL(s));
     cb = get_callback(s);
 
     if (s->server) {
@@ -1027,7 +1027,6 @@ static SUB_STATE_RETURN read_state_machine_reduce(SSL_CONNECTION *s) {
         max_message_size = ossl_statem_server_max_message_size;
         post_process_message = ossl_statem_server_post_process_message_reduce;
     } else {
-        printf("IT's NOT Client bro\n");
         //transition = ossl_statem_client_read_transition_reduce;
         //process_message = ossl_statem_client_process_message;
         //max_message_size = ossl_statem_client_max_message_size;
@@ -1042,7 +1041,7 @@ static SUB_STATE_RETURN read_state_machine_reduce(SSL_CONNECTION *s) {
     while (1) {
 
         printf("St->read_state_machine_reduce: %d\n",st->read_state);
-        printf("  aaaaa: %s\n",SSL_state_string_long(SSL_CONNECTION_GET_SSL(s)));
+        SSL_state_string_long(SSL_CONNECTION_GET_SSL(s));
         switch (st->read_state) {
             case READ_STATE_HEADER:
 
@@ -1160,7 +1159,8 @@ static SUB_STATE_RETURN read_state_machine_reduce(SSL_CONNECTION *s) {
 
             case READ_STATE_POST_PROCESS:
                 printf("READ_STATE_POST_PROCESS in read_state_machine func\n");
-                st->read_state_work = post_process_message(s, st->read_state_work);
+
+                st->read_state_work = post_process_message(s, st->read_state_work, &pkt);
                 switch (st->read_state_work) {
                     case WORK_ERROR:
                         check_fatal(s);

@@ -798,7 +798,7 @@ int tls_parse_all_extensions(SSL_CONNECTION *s, int context,
 
     /* Calculate the number of extensions in the extensions list */
     numexts += s->cert->custext.meths_count;
-
+    printf("tls_parse_all_extensions before\n");
     /* Parse each extension in turn */
     for (i = 0; i < numexts; i++) {
         if (!tls_parse_extension(s, i, context, exts, x, chainidx)) {
@@ -806,6 +806,7 @@ int tls_parse_all_extensions(SSL_CONNECTION *s, int context,
             return 0;
         }
     }
+    printf("tls_parse_all_extensions end\n");
 
     if (fin) {
         /*

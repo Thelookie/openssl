@@ -1379,6 +1379,7 @@ int EVP_PKEY_digestsign_supports_digest(EVP_PKEY *pkey, OSSL_LIB_CTX *libctx,
 int EVP_PKEY_set1_encoded_public_key(EVP_PKEY *pkey, const unsigned char *pub,
                                      size_t publen)
 {
+    //printf("EVP_PKEY_set1_encoded_public_key\n");
     if (pkey == NULL)
         return 0;
     if (evp_pkey_is_provided(pkey))

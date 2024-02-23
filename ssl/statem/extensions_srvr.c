@@ -691,11 +691,11 @@ int tls_parse_ctos_key_share(SSL_CONNECTION *s, PACKET *pkt,
         
         //============================
         
-        if ((ginf = tls1_group_id_lookup(SSL_CONNECTION_GET_CTX(s),
-                                         group_id)) == NULL) {
-            SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_KEY_SHARE);
-            return 0;
-        }
+        //if ((ginf = tls1_group_id_lookup(SSL_CONNECTION_GET_CTX(s),
+        //                                 group_id)) == NULL) {
+        //    SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_KEY_SHARE);
+        //    return 0;
+        //}
         //printf("ginf->is_kem: %d\n",ginf->is_kem);
         /*
         if (!PACKET_as_length_prefixed_2(pkt, &encoded_pt)
@@ -704,7 +704,7 @@ int tls_parse_ctos_key_share(SSL_CONNECTION *s, PACKET *pkt,
             return 0;
         }
         */
-        
+        /*
         if (PACKET_remaining(&encoded_pt) == 0) {
             SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_R_LENGTH_MISMATCH);
             return 0;
@@ -733,16 +733,17 @@ int tls_parse_ctos_key_share(SSL_CONNECTION *s, PACKET *pkt,
 
 
         s->s3.did_kex = 1;
+        */
         
         //============================
-        /*
+        
         if (tls13_set_encoded_pub_key(s->s3.peer_tmp,
                                       PACKET_data(&encoded_pt),
                                       PACKET_remaining(&encoded_pt)) <= 0) {
             SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_ECPOINT);
             return 0;
         }
-        */
+        
         
         found = 1;
     }
@@ -1807,26 +1808,19 @@ EXT_RETURN tls_construct_stoc_key_share(SSL_CONNECTION *s, WPACKET *pkt,
     } else {
         /* KEM mode */
         printf("extensions_srvr KEM mode\n");
-        if(s->s3.tmp.pkey != NULL){
-            struct timespec begin;
-            clock_gettime(CLOCK_MONOTONIC, &begin);
-            printf("Kyber key is prepared : %f\n",(begin.tv_sec) + (begin.tv_nsec) / 1000000000.0);
+        
+        struct timespec begin;
+        clock_gettime(CLOCK_MONOTONIC, &begin);
+        printf("Kyber key is prepared : %f\n",(begin.tv_sec) + (begin.tv_nsec) / 1000000000.0);
 
-
-        }
-        else{
+            
+    
             unsigned char *ct = NULL;
             size_t ctlen = 0;
 
-            /*
-             * This does not update the crypto state.
-             *
-             * The generated pms is stored in `s->s3.tmp.pms` to be later used via
-             * ssl_gensecret().
-             */
-            //printf("ssl_encapsulate\n");
+          
+            printf("ssl_encapsulate\n");
             if (ssl_encapsulate(s, ckey, &ct, &ctlen, 0) == 0) {
-                /* SSLfatal() already called */
                 return EXT_RETURN_FAIL;
             }
 
@@ -1843,7 +1837,7 @@ EXT_RETURN tls_construct_stoc_key_share(SSL_CONNECTION *s, WPACKET *pkt,
                 return EXT_RETURN_FAIL;
             }
             OPENSSL_free(ct);
-
+            
         }
         
 
@@ -1854,7 +1848,7 @@ EXT_RETURN tls_construct_stoc_key_share(SSL_CONNECTION *s, WPACKET *pkt,
             /* SSLfatal() already called */
             return EXT_RETURN_FAIL;
         }
-    }
+    
     s->s3.did_kex = 1;
     return EXT_RETURN_SENT;
 #else
