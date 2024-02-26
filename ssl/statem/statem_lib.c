@@ -886,20 +886,6 @@ MSG_PROCESS_RETURN tls_process_finished(SSL_CONNECTION *s, PACKET *pkt)
         return MSG_PROCESS_ERROR;
     }
 
-    ok = CRYPTO_memcmp(PACKET_data(pkt), s->s3.tmp.peer_finish_md,
-                       md_len);
-#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
-    if (ok != 0) {
-        if ((PACKET_data(pkt)[0] ^ s->s3.tmp.peer_finish_md[0]) != 0xFF) {
-            ok = 0;
-        }
-    }
-#endif
-    if (ok != 0) {
-        SSLfatal(s, SSL_AD_DECRYPT_ERROR, SSL_R_DIGEST_CHECK_FAILED);
-        return MSG_PROCESS_ERROR;
-    }
-
     /*
      * Copy the finished so we can use it for renegotiation checks
      */
@@ -991,6 +977,23 @@ MSG_PROCESS_RETURN tls_process_finished(SSL_CONNECTION *s, PACKET *pkt)
     }
 
     if(s->early_data_state == SSL_DNS_FINISHED_READING && s->server){
+            printf("md_len: %ld\n", md_len);
+            printf("PACKET_data(pkt): %s\n", PACKET_data(pkt));
+            printf("s->s3.tmp.peer_finish_md: %s\n", s->s3.tmp.peer_finish_md);
+
+            ok = CRYPTO_memcmp(PACKET_data(pkt), s->s3.tmp.peer_finish_md,
+                               md_len);
+        #ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+            if (ok != 0) {
+                if ((PACKET_data(pkt)[0] ^ s->s3.tmp.peer_finish_md[0]) != 0xFF) {
+                    ok = 0;
+                }
+            }
+        #endif
+            if (ok != 0) {
+                SSLfatal(s, SSL_AD_DECRYPT_ERROR, SSL_R_DIGEST_CHECK_FAILED);
+                return MSG_PROCESS_ERROR;
+            }
         SSL tmp = *ssl;
         printf("s->master_secret: \n");
         puts(s->master_secret);

@@ -691,12 +691,13 @@ int tls_parse_ctos_key_share(SSL_CONNECTION *s, PACKET *pkt,
         
         //============================
         
-        //if ((ginf = tls1_group_id_lookup(SSL_CONNECTION_GET_CTX(s),
-        //                                 group_id)) == NULL) {
-        //    SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_KEY_SHARE);
-        //    return 0;
-        //}
-        //printf("ginf->is_kem: %d\n",ginf->is_kem);
+        if ((ginf = tls1_group_id_lookup(SSL_CONNECTION_GET_CTX(s),
+                                         group_id)) == NULL) {
+            SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_KEY_SHARE);
+            return 0;
+        }
+        printf("ginf->is_kem: %d\n",ginf->is_kem);
+        
         /*
         if (!PACKET_as_length_prefixed_2(pkt, &encoded_pt)
                 || PACKET_remaining(&encoded_pt) == 0) {
@@ -704,7 +705,7 @@ int tls_parse_ctos_key_share(SSL_CONNECTION *s, PACKET *pkt,
             return 0;
         }
         */
-        /*
+        
         if (PACKET_remaining(&encoded_pt) == 0) {
             SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_R_LENGTH_MISMATCH);
             return 0;
@@ -733,9 +734,10 @@ int tls_parse_ctos_key_share(SSL_CONNECTION *s, PACKET *pkt,
 
 
         s->s3.did_kex = 1;
-        */
+        
         
         //============================
+        /*
         
         if (tls13_set_encoded_pub_key(s->s3.peer_tmp,
                                       PACKET_data(&encoded_pt),
@@ -743,6 +745,8 @@ int tls_parse_ctos_key_share(SSL_CONNECTION *s, PACKET *pkt,
             SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_ECPOINT);
             return 0;
         }
+        */
+        
         
         
         found = 1;
@@ -1820,15 +1824,15 @@ EXT_RETURN tls_construct_stoc_key_share(SSL_CONNECTION *s, WPACKET *pkt,
 
           
             printf("ssl_encapsulate\n");
-            if (ssl_encapsulate(s, ckey, &ct, &ctlen, 0) == 0) {
-                return EXT_RETURN_FAIL;
-            }
+            //if (ssl_encapsulate(s, ckey, &ct, &ctlen, 0) == 0) {
+            //    return EXT_RETURN_FAIL;
+            //}
 
-            if (ctlen == 0) {
+            /*if (ctlen == 0) {
                 SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
                 OPENSSL_free(ct);
                 return EXT_RETURN_FAIL;
-            }
+            }*/
 
             if (!WPACKET_sub_memcpy_u16(pkt, ct, ctlen)
                     || !WPACKET_close(pkt)) {
@@ -1844,10 +1848,10 @@ EXT_RETURN tls_construct_stoc_key_share(SSL_CONNECTION *s, WPACKET *pkt,
         /*
          * This causes the crypto state to be updated based on the generated pms
          */
-        if (ssl_gensecret(s, s->s3.tmp.pms, s->s3.tmp.pmslen) == 0) {
+        //if (ssl_gensecret(s, s->s3.tmp.pms, s->s3.tmp.pmslen) == 0) {
             /* SSLfatal() already called */
-            return EXT_RETURN_FAIL;
-        }
+        //    return EXT_RETURN_FAIL;
+        //}
     
     s->s3.did_kex = 1;
     return EXT_RETURN_SENT;
