@@ -699,8 +699,10 @@ static WRITE_TRAN ossl_statem_server13_write_transition(SSL_CONNECTION *s)
             st->hand_state = TLS_ST_SW_CERT_REQ;
         else if (do_compressed_cert(s))
             st->hand_state = TLS_ST_SW_COMP_CERT;
-        else
-            st->hand_state = TLS_ST_SW_CERT;
+        else{
+            //pqtls revise
+            st->hand_state = TLS_ST_SW_FINISHED;
+        }
 
         return WRITE_TRAN_CONTINUE;
 
@@ -4929,7 +4931,7 @@ WRITE_TRAN ossl_statem_server_write_transition_reduce(SSL_CONNECTION *s) {
 
     if (SSL_CONNECTION_IS_TLS13(s))
         return ossl_statem_server13_write_transition(s);
-    printf("tarnsition at write ::: st->hand_state: %d\n", st->hand_state);
+    //printf("tarnsition at write ::: st->hand_state: %d\n", st->hand_state);
     switch (st->hand_state) {
         default:
             /* Shouldn't happen */
