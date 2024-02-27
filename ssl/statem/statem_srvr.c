@@ -4325,6 +4325,7 @@ MSG_PROCESS_RETURN tls_process_client_compressed_certificate(SSL_CONNECTION *sc,
 
 CON_FUNC_RETURN tls_construct_server_certificate(SSL_CONNECTION *s, WPACKET *pkt)
 {
+    printf("tls_construct_server_certificate\n");
     CERT_PKEY *cpk = s->s3.tmp.cert;
 
     if (cpk == NULL) {
@@ -4348,6 +4349,7 @@ CON_FUNC_RETURN tls_construct_server_certificate(SSL_CONNECTION *s, WPACKET *pkt
         }
         break;
     case TLSEXT_cert_type_x509:
+        printf("TLSEXT_cert_type_x509\n");
         if (!ssl3_output_cert_chain(s, pkt, cpk, 0)) {
             /* SSLfatal() already called */
             return 0;

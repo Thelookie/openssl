@@ -1417,6 +1417,7 @@ static int final_key_share(SSL_CONNECTION *s, unsigned int context, int sent)
      */
     if (s->server) {
         if (s->s3.peer_tmp != NULL) {
+            printf("\ns->s3.peer_tmp\n");
             /* We have a suitable key_share */
             if ((s->s3.flags & TLS1_FLAGS_STATELESS) != 0
                     && !s->ext.cookieok) {
@@ -1433,6 +1434,7 @@ static int final_key_share(SSL_CONNECTION *s, unsigned int context, int sent)
                 return 1;
             }
         } else {
+            printf("\ns->s3.peer_tmpueehe\n");
             /* No suitable key_share */
             if (s->hello_retry_request == SSL_HRR_NONE && sent
                     && (!s->hit
