@@ -622,6 +622,7 @@ int tls_parse_ctos_key_share(SSL_CONNECTION *s, PACKET *pkt,
                  SSL_R_MISSING_SUPPORTED_GROUPS_EXTENSION);
         return 0;
     }
+    //printf("s->s3.group_id: %d\n",s->s3.group_id );
 
     if (s->s3.group_id != 0 && PACKET_remaining(&key_share_list) == 0) {
         /*
@@ -652,19 +653,20 @@ int tls_parse_ctos_key_share(SSL_CONNECTION *s, PACKET *pkt,
         /*
          * If we sent an HRR then the key_share sent back MUST be for the group
          * we requested, and must be the only key_share sent.
-         
+         */
         if (s->s3.group_id != 0
                 && (group_id != s->s3.group_id
                     || PACKET_remaining(&key_share_list) != 0)) {
             SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_KEY_SHARE);
             return 0;
         }
-        */
+        
         /* Check if this share is in supported_groups sent from client */
         if (!check_in_list(s, group_id, clntgroups, clnt_num_groups, 0)) {
             SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_KEY_SHARE);
             return 0;
         }
+        
 
         /* Check if this share is for a group we can use */
         if (!check_in_list(s, group_id, srvrgroups, srvr_num_groups, 1)
@@ -679,77 +681,112 @@ int tls_parse_ctos_key_share(SSL_CONNECTION *s, PACKET *pkt,
             continue;
         }
 
+
         s->s3.group_id = group_id;
         /* Cache the selected group ID in the SSL_SESSION */
         s->session->kex_group = group_id;
+        printf("group_id: %d\n",group_id);
 
         if ((s->s3.peer_tmp = ssl_generate_param_group(s, group_id)) == NULL) {
             SSLfatal(s, SSL_AD_INTERNAL_ERROR,
                    SSL_R_UNABLE_TO_FIND_ECDH_PARAMETERS);
             return 0;
         }
+        PACKET_remaining(&encoded_pt);
+        size_t ctlen = PACKET_remaining(&encoded_pt);
+        if(ctlen==768){
         
-        //============================
-        
-        if ((ginf = tls1_group_id_lookup(SSL_CONNECTION_GET_CTX(s),
-                                         group_id)) == NULL) {
-            SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_KEY_SHARE);
-            return 0;
-        }
-        printf("ginf->is_kem: %d\n",ginf->is_kem);
-        
-        /*
-        if (!PACKET_as_length_prefixed_2(pkt, &encoded_pt)
-                || PACKET_remaining(&encoded_pt) == 0) {
-            SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_R_LENGTH_MISMATCH);
-            return 0;
-        }
-        */
-        
-        if (PACKET_remaining(&encoded_pt) == 0) {
-            SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_R_LENGTH_MISMATCH);
-            return 0;
-        }
-        if(ginf->is_kem){
-            printf("DNS-BASED KEM MODE\n");
-            const unsigned char *ct = PACKET_data(&encoded_pt);
-            size_t ctlen = PACKET_remaining(&encoded_pt);
+            //============================
+            
+            if ((ginf = tls1_group_id_lookup(SSL_CONNECTION_GET_CTX(s),
+                                             group_id)) == NULL) {
+                SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_KEY_SHARE);
+                return 0;
+            }
+            printf("ginf->is_kem: %d\n",ginf->is_kem);
+            
+            /*
+            if (!PACKET_as_length_prefixed_2(pkt, &encoded_pt)
+                    || PACKET_remaining(&encoded_pt) == 0) {
+                SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_R_LENGTH_MISMATCH);
+                return 0;
+            }
+            */
+            
+            if (PACKET_remaining(&encoded_pt) == 0) {
+                SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_R_LENGTH_MISMATCH);
+                return 0;
+            }
+            if(ginf->is_kem){
+                printf("DNS-BASED KEM MODE\n");
+                const unsigned char *ct = PACKET_data(&encoded_pt);
+                size_t ctlen = PACKET_remaining(&encoded_pt);
 
-            EVP_PKEY *skey = NULL;
-            FILE *f;
-            f = fopen("dns/keyshare/kyber_priv.pem", "rb");
-            PEM_read_PrivateKey(f, &skey, NULL, NULL);
-            PEM_write_PrivateKey(stdout, skey, NULL, NULL, 0, NULL, NULL);
-            fclose(f);
+                EVP_PKEY *skey = NULL;
+                FILE *f;
+                f = fopen("dns/keyshare/kyber_priv.pem", "rb");
+                PEM_read_PrivateKey(f, &skey, NULL, NULL);
+                //PEM_write_PrivateKey(stdout, skey, NULL, NULL, 0, NULL, NULL);
+                fclose(f);
 
-            printf("ct: %s\n", ct);
-            printf("ctlen: %ld\n", ctlen);
+                printf("ct: %s\n", ct);
+                printf("ctlen: %ld\n", ctlen);
 
-            if (ssl_decapsulate(s, skey, ct, ctlen, 1) == 0) {
+                if (ssl_decapsulate(s, skey, ct, ctlen, 1) == 0) {
+                    return 0;
+                }
+
+            }
+            printf("444\n");
+
+
+            s->s3.did_kex = 1;
+            
+            
+            //============================
+            /*
+            
+            if (tls13_set_encoded_pub_key(s->s3.peer_tmp,
+                                          PACKET_data(&encoded_pt),
+                                          PACKET_remaining(&encoded_pt)) <= 0) {
+                SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_ECPOINT);
+                return 0;
+            }
+            */
+            //============================111
+            if(PACKET_get_net_2(&key_share_list, &group_id)){
+                if (!PACKET_get_length_prefixed_2(&key_share_list, &encoded_pt)) {
+                    SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_R_LENGTH_MISMATCH);
+                    return 0;
+                }
+                if ((s->s3.peer_tmp = ssl_generate_param_group(s, group_id)) == NULL) {
+                    SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                           SSL_R_UNABLE_TO_FIND_ECDH_PARAMETERS);
+                    return 0;
+                }
+
+                if (tls13_set_encoded_pub_key(s->s3.peer_tmp,
+                                              PACKET_data(&encoded_pt),
+                                              PACKET_remaining(&encoded_pt)) <= 0) {
+                    SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_ECPOINT);
+                    return 0;
+                }
+                PEM_write_PUBKEY(stdout, s->s3.peer_tmp);
+            }
+
+            //============================222
+            found = 1;
+        }
+        else{
+            if (tls13_set_encoded_pub_key(s->s3.peer_tmp,
+                                      PACKET_data(&encoded_pt),
+                                      PACKET_remaining(&encoded_pt)) <= 0) {
+                SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_ECPOINT);
                 return 0;
             }
 
+            found = 1;
         }
-         printf("444\n");
-
-
-        s->s3.did_kex = 1;
-        
-        
-        //============================
-        /*
-        
-        if (tls13_set_encoded_pub_key(s->s3.peer_tmp,
-                                      PACKET_data(&encoded_pt),
-                                      PACKET_remaining(&encoded_pt)) <= 0) {
-            SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_ECPOINT);
-            return 0;
-        }
-        */
-        
-        
-        
-        found = 1;
     }
 #endif
 
@@ -1817,10 +1854,19 @@ EXT_RETURN tls_construct_stoc_key_share(SSL_CONNECTION *s, WPACKET *pkt,
         clock_gettime(CLOCK_MONOTONIC, &begin);
         printf("Kyber key is prepared : %f\n",(begin.tv_sec) + (begin.tv_nsec) / 1000000000.0);
 
-            
     
             unsigned char *ct = NULL;
             size_t ctlen = 0;
+            if (ssl_encapsulate(s, ckey, &ct, &ctlen, 0) == 0) {
+            /* SSLfatal() already called */
+            return EXT_RETURN_FAIL;
+            }
+
+            if (ctlen == 0) {
+                SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+                OPENSSL_free(ct);
+                return EXT_RETURN_FAIL;
+            }
 
           
             printf("ssl_encapsulate\n");
