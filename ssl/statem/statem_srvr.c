@@ -649,154 +649,283 @@ static WRITE_TRAN ossl_statem_server13_write_transition(SSL_CONNECTION *s)
      * TLSv1.3 yet, so that is handled by ossl_statem_server_write_transition()
      */
     printf("st-> hand_state in ossl_statem_server13_write_transition: %d\n",st->hand_state);
-    switch (st->hand_state) {
-    default:
-        /* Shouldn't happen */
-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
-        return WRITE_TRAN_ERROR;
+    if(s->DMODE==1){
+        switch (st->hand_state) {
+        default:
+            /* Shouldn't happen */
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+            return WRITE_TRAN_ERROR;
 
-    case TLS_ST_OK:
-        if (s->key_update != SSL_KEY_UPDATE_NONE) {
-            st->hand_state = TLS_ST_SW_KEY_UPDATE;
+        case TLS_ST_OK:
+            if (s->key_update != SSL_KEY_UPDATE_NONE) {
+                st->hand_state = TLS_ST_SW_KEY_UPDATE;
+                return WRITE_TRAN_CONTINUE;
+            }
+            if (s->post_handshake_auth == SSL_PHA_REQUEST_PENDING) {
+                st->hand_state = TLS_ST_SW_CERT_REQ;
+                return WRITE_TRAN_CONTINUE;
+            }
+            if (s->ext.extra_tickets_expected > 0) {
+                st->hand_state = TLS_ST_SW_SESSION_TICKET;
+                return WRITE_TRAN_CONTINUE;
+            }
+            /* Try to read from the client instead */
+            return WRITE_TRAN_FINISHED;
+        case TLS_ST_SR_DNS_FINISHED_APPLICATION:
+        case TLS_ST_SR_CLNT_HELLO:
+            st->hand_state = TLS_ST_SW_SRVR_HELLO;
             return WRITE_TRAN_CONTINUE;
-        }
-        if (s->post_handshake_auth == SSL_PHA_REQUEST_PENDING) {
-            st->hand_state = TLS_ST_SW_CERT_REQ;
+
+        case TLS_ST_SW_SRVR_HELLO:
+            if ((s->options & SSL_OP_ENABLE_MIDDLEBOX_COMPAT) != 0
+                    && s->hello_retry_request != SSL_HRR_COMPLETE)
+                st->hand_state = TLS_ST_SW_CHANGE;
+            else if (s->hello_retry_request == SSL_HRR_PENDING)
+                st->hand_state = TLS_ST_EARLY_DATA;
+            else
+                st->hand_state = TLS_ST_SW_ENCRYPTED_EXTENSIONS;
             return WRITE_TRAN_CONTINUE;
-        }
-        if (s->ext.extra_tickets_expected > 0) {
-            st->hand_state = TLS_ST_SW_SESSION_TICKET;
+
+        case TLS_ST_SW_CHANGE:
+            if (s->hello_retry_request == SSL_HRR_PENDING)
+                st->hand_state = TLS_ST_EARLY_DATA;
+            else
+                st->hand_state = TLS_ST_SW_ENCRYPTED_EXTENSIONS;
             return WRITE_TRAN_CONTINUE;
-        }
-        /* Try to read from the client instead */
-        return WRITE_TRAN_FINISHED;
-    case TLS_ST_SR_DNS_FINISHED_APPLICATION:
-    case TLS_ST_SR_CLNT_HELLO:
-        st->hand_state = TLS_ST_SW_SRVR_HELLO;
-        return WRITE_TRAN_CONTINUE;
 
-    case TLS_ST_SW_SRVR_HELLO:
-        if ((s->options & SSL_OP_ENABLE_MIDDLEBOX_COMPAT) != 0
-                && s->hello_retry_request != SSL_HRR_COMPLETE)
-            st->hand_state = TLS_ST_SW_CHANGE;
-        else if (s->hello_retry_request == SSL_HRR_PENDING)
-            st->hand_state = TLS_ST_EARLY_DATA;
-        else
-            st->hand_state = TLS_ST_SW_ENCRYPTED_EXTENSIONS;
-        return WRITE_TRAN_CONTINUE;
+        case TLS_ST_SW_ENCRYPTED_EXTENSIONS:
+            if (s->hit)
+                st->hand_state = TLS_ST_SW_FINISHED;
+            else if (send_certificate_request(s))
+                st->hand_state = TLS_ST_SW_CERT_REQ;
+            else if (do_compressed_cert(s))
+                st->hand_state = TLS_ST_SW_COMP_CERT;
+            else{
+                //pqtls revise
+                st->hand_state = TLS_ST_SW_FINISHED;
+            }
 
-    case TLS_ST_SW_CHANGE:
-        if (s->hello_retry_request == SSL_HRR_PENDING)
-            st->hand_state = TLS_ST_EARLY_DATA;
-        else
-            st->hand_state = TLS_ST_SW_ENCRYPTED_EXTENSIONS;
-        return WRITE_TRAN_CONTINUE;
+            return WRITE_TRAN_CONTINUE;
 
-    case TLS_ST_SW_ENCRYPTED_EXTENSIONS:
-        if (s->hit)
+        case TLS_ST_SW_CERT_REQ:
+            if (s->post_handshake_auth == SSL_PHA_REQUEST_PENDING) {
+                s->post_handshake_auth = SSL_PHA_REQUESTED;
+                st->hand_state = TLS_ST_OK;
+            } else if (do_compressed_cert(s)) {
+                st->hand_state = TLS_ST_SW_COMP_CERT;
+            } else {
+                st->hand_state = TLS_ST_SW_CERT;
+            }
+            return WRITE_TRAN_CONTINUE;
+
+        case TLS_ST_SW_COMP_CERT:
+        case TLS_ST_SW_CERT:
+            st->hand_state = TLS_ST_SW_CERT_VRFY;
+            return WRITE_TRAN_CONTINUE;
+
+        case TLS_ST_SW_CERT_VRFY:
             st->hand_state = TLS_ST_SW_FINISHED;
-        else if (send_certificate_request(s))
-            st->hand_state = TLS_ST_SW_CERT_REQ;
-        else if (do_compressed_cert(s))
-            st->hand_state = TLS_ST_SW_COMP_CERT;
-        else{
-            //pqtls revise
-            st->hand_state = TLS_ST_SW_FINISHED;
-        }
+            return WRITE_TRAN_CONTINUE;
 
-        return WRITE_TRAN_CONTINUE;
+        case TLS_ST_SW_FINISHED:
+            if(s->early_data_state == SSL_DNS_FINISHED_WRITING){
+                    if (s->post_handshake_auth == SSL_PHA_REQUESTED) {
+                        s->post_handshake_auth = SSL_PHA_EXT_RECEIVED;
+                    } else if (!s->ext.ticket_expected) {
+                        /*
+                         * If we're not going to renew the ticket then we just finish the
+                         * handshake at this point.
+                         */
+                        st->hand_state = TLS_ST_OK;
+                        return WRITE_TRAN_CONTINUE;
+                    }
+                    s->early_data_state = SSL_DNS_FINISHED_READING2;
+                    return WRITE_TRAN_FINISHED;
+                    if (s->num_tickets > s->sent_tickets)
+                        st->hand_state = TLS_ST_SW_SESSION_TICKET;
+                    else{
 
-    case TLS_ST_SW_CERT_REQ:
-        if (s->post_handshake_auth == SSL_PHA_REQUEST_PENDING) {
-            s->post_handshake_auth = SSL_PHA_REQUESTED;
-            st->hand_state = TLS_ST_OK;
-        } else if (do_compressed_cert(s)) {
-            st->hand_state = TLS_ST_SW_COMP_CERT;
-        } else {
-            st->hand_state = TLS_ST_SW_CERT;
-        }
-        return WRITE_TRAN_CONTINUE;
+                        st->hand_state = TLS_ST_OK;
 
-    case TLS_ST_SW_COMP_CERT:
-    case TLS_ST_SW_CERT:
-        st->hand_state = TLS_ST_SW_CERT_VRFY;
-        return WRITE_TRAN_CONTINUE;
+                    }
+                }else{
+            st->hand_state = TLS_ST_EARLY_DATA;
+            s->ts_msg_write = ossl_time_now();
+            }
+            return WRITE_TRAN_CONTINUE;
 
-    case TLS_ST_SW_CERT_VRFY:
-        st->hand_state = TLS_ST_SW_FINISHED;
-        return WRITE_TRAN_CONTINUE;
+        case TLS_ST_EARLY_DATA:
+            return WRITE_TRAN_FINISHED;
 
-    case TLS_ST_SW_FINISHED:
-        if(s->early_data_state == SSL_DNS_FINISHED_WRITING){
-                if (s->post_handshake_auth == SSL_PHA_REQUESTED) {
-                    s->post_handshake_auth = SSL_PHA_EXT_RECEIVED;
-                } else if (!s->ext.ticket_expected) {
-                    /*
-                     * If we're not going to renew the ticket then we just finish the
-                     * handshake at this point.
-                     */
-                    st->hand_state = TLS_ST_OK;
-                    return WRITE_TRAN_CONTINUE;
-                }
-                s->early_data_state = SSL_DNS_FINISHED_READING2;
-                return WRITE_TRAN_FINISHED;
-                if (s->num_tickets > s->sent_tickets)
-                    st->hand_state = TLS_ST_SW_SESSION_TICKET;
-                else{
-
-                    st->hand_state = TLS_ST_OK;
-
-                }
-            }else{
-        st->hand_state = TLS_ST_EARLY_DATA;
-        s->ts_msg_write = ossl_time_now();
-        }
-        return WRITE_TRAN_CONTINUE;
-
-    case TLS_ST_EARLY_DATA:
-        return WRITE_TRAN_FINISHED;
-
-    case TLS_ST_SR_FINISHED:
-        s->ts_msg_read = ossl_time_now();
-        /*
-         * Technically we have finished the handshake at this point, but we're
-         * going to remain "in_init" for now and write out any session tickets
-         * immediately.
-         */
-        if (s->post_handshake_auth == SSL_PHA_REQUESTED) {
-            s->post_handshake_auth = SSL_PHA_EXT_RECEIVED;
-        } else if (!s->ext.ticket_expected) {
+        case TLS_ST_SR_FINISHED:
+            s->ts_msg_read = ossl_time_now();
             /*
-             * If we're not going to renew the ticket then we just finish the
-             * handshake at this point.
+             * Technically we have finished the handshake at this point, but we're
+             * going to remain "in_init" for now and write out any session tickets
+             * immediately.
              */
+            if (s->post_handshake_auth == SSL_PHA_REQUESTED) {
+                s->post_handshake_auth = SSL_PHA_EXT_RECEIVED;
+            } else if (!s->ext.ticket_expected) {
+                /*
+                 * If we're not going to renew the ticket then we just finish the
+                 * handshake at this point.
+                 */
+                st->hand_state = TLS_ST_OK;
+                return WRITE_TRAN_CONTINUE;
+            }
+            if (s->num_tickets > s->sent_tickets)
+                st->hand_state = TLS_ST_SW_SESSION_TICKET;
+            else
+                st->hand_state = TLS_ST_OK;
+            return WRITE_TRAN_CONTINUE;
+
+        case TLS_ST_SR_KEY_UPDATE:
+        case TLS_ST_SW_KEY_UPDATE:
             st->hand_state = TLS_ST_OK;
             return WRITE_TRAN_CONTINUE;
-        }
-        if (s->num_tickets > s->sent_tickets)
-            st->hand_state = TLS_ST_SW_SESSION_TICKET;
-        else
-            st->hand_state = TLS_ST_OK;
-        return WRITE_TRAN_CONTINUE;
 
-    case TLS_ST_SR_KEY_UPDATE:
-    case TLS_ST_SW_KEY_UPDATE:
-        st->hand_state = TLS_ST_OK;
-        return WRITE_TRAN_CONTINUE;
-
-    case TLS_ST_SW_SESSION_TICKET:
-        /* In a resumption we only ever send a maximum of one new ticket.
-         * Following an initial handshake we send the number of tickets we have
-         * been configured for.
-         */
-        if (!SSL_IS_FIRST_HANDSHAKE(s) && s->ext.extra_tickets_expected > 0) {
+        case TLS_ST_SW_SESSION_TICKET:
+            /* In a resumption we only ever send a maximum of one new ticket.
+             * Following an initial handshake we send the number of tickets we have
+             * been configured for.
+             */
+            if (!SSL_IS_FIRST_HANDSHAKE(s) && s->ext.extra_tickets_expected > 0) {
+                return WRITE_TRAN_CONTINUE;
+            } else if (s->hit || s->num_tickets <= s->sent_tickets) {
+                /* We've written enough tickets out. */
+                st->hand_state = TLS_ST_OK;
+            }
             return WRITE_TRAN_CONTINUE;
-        } else if (s->hit || s->num_tickets <= s->sent_tickets) {
-            /* We've written enough tickets out. */
-            st->hand_state = TLS_ST_OK;
         }
-        return WRITE_TRAN_CONTINUE;
     }
+    else{
+        switch (st->hand_state) {
+        default:
+            /* Shouldn't happen */
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+            return WRITE_TRAN_ERROR;
+
+        case TLS_ST_OK:
+            if (s->key_update != SSL_KEY_UPDATE_NONE) {
+                st->hand_state = TLS_ST_SW_KEY_UPDATE;
+                return WRITE_TRAN_CONTINUE;
+            }
+            if (s->post_handshake_auth == SSL_PHA_REQUEST_PENDING) {
+                st->hand_state = TLS_ST_SW_CERT_REQ;
+                return WRITE_TRAN_CONTINUE;
+            }
+            if (s->ext.extra_tickets_expected > 0) {
+                st->hand_state = TLS_ST_SW_SESSION_TICKET;
+                return WRITE_TRAN_CONTINUE;
+            }
+            /* Try to read from the client instead */
+            return WRITE_TRAN_FINISHED;
+
+        case TLS_ST_SR_CLNT_HELLO:
+            st->hand_state = TLS_ST_SW_SRVR_HELLO;
+            return WRITE_TRAN_CONTINUE;
+
+        case TLS_ST_SW_SRVR_HELLO:
+            if ((s->options & SSL_OP_ENABLE_MIDDLEBOX_COMPAT) != 0
+                    && s->hello_retry_request != SSL_HRR_COMPLETE)
+                st->hand_state = TLS_ST_SW_CHANGE;
+            else if (s->hello_retry_request == SSL_HRR_PENDING)
+                st->hand_state = TLS_ST_EARLY_DATA;
+            else
+                st->hand_state = TLS_ST_SW_ENCRYPTED_EXTENSIONS;
+            return WRITE_TRAN_CONTINUE;
+
+        case TLS_ST_SW_CHANGE:
+            if (s->hello_retry_request == SSL_HRR_PENDING)
+                st->hand_state = TLS_ST_EARLY_DATA;
+            else
+                st->hand_state = TLS_ST_SW_ENCRYPTED_EXTENSIONS;
+            return WRITE_TRAN_CONTINUE;
+
+        case TLS_ST_SW_ENCRYPTED_EXTENSIONS:
+            if (s->hit)
+                st->hand_state = TLS_ST_SW_FINISHED;
+            else if (send_certificate_request(s))
+                st->hand_state = TLS_ST_SW_CERT_REQ;
+            else if (do_compressed_cert(s))
+                st->hand_state = TLS_ST_SW_COMP_CERT;
+            else
+                st->hand_state = TLS_ST_SW_CERT;
+
+            return WRITE_TRAN_CONTINUE;
+
+        case TLS_ST_SW_CERT_REQ:
+            if (s->post_handshake_auth == SSL_PHA_REQUEST_PENDING) {
+                s->post_handshake_auth = SSL_PHA_REQUESTED;
+                st->hand_state = TLS_ST_OK;
+            } else if (do_compressed_cert(s)) {
+                st->hand_state = TLS_ST_SW_COMP_CERT;
+            } else {
+                st->hand_state = TLS_ST_SW_CERT;
+            }
+            return WRITE_TRAN_CONTINUE;
+
+        case TLS_ST_SW_COMP_CERT:
+        case TLS_ST_SW_CERT:
+            st->hand_state = TLS_ST_SW_CERT_VRFY;
+            return WRITE_TRAN_CONTINUE;
+
+        case TLS_ST_SW_CERT_VRFY:
+            st->hand_state = TLS_ST_SW_FINISHED;
+            return WRITE_TRAN_CONTINUE;
+
+        case TLS_ST_SW_FINISHED:
+            st->hand_state = TLS_ST_EARLY_DATA;
+            s->ts_msg_write = ossl_time_now();
+            return WRITE_TRAN_CONTINUE;
+
+        case TLS_ST_EARLY_DATA:
+            return WRITE_TRAN_FINISHED;
+
+        case TLS_ST_SR_FINISHED:
+            s->ts_msg_read = ossl_time_now();
+            /*
+             * Technically we have finished the handshake at this point, but we're
+             * going to remain "in_init" for now and write out any session tickets
+             * immediately.
+             */
+            if (s->post_handshake_auth == SSL_PHA_REQUESTED) {
+                s->post_handshake_auth = SSL_PHA_EXT_RECEIVED;
+            } else if (!s->ext.ticket_expected) {
+                /*
+                 * If we're not going to renew the ticket then we just finish the
+                 * handshake at this point.
+                 */
+                st->hand_state = TLS_ST_OK;
+                return WRITE_TRAN_CONTINUE;
+            }
+            if (s->num_tickets > s->sent_tickets)
+                st->hand_state = TLS_ST_SW_SESSION_TICKET;
+            else
+                st->hand_state = TLS_ST_OK;
+            return WRITE_TRAN_CONTINUE;
+
+        case TLS_ST_SR_KEY_UPDATE:
+        case TLS_ST_SW_KEY_UPDATE:
+            st->hand_state = TLS_ST_OK;
+            return WRITE_TRAN_CONTINUE;
+
+        case TLS_ST_SW_SESSION_TICKET:
+            /* In a resumption we only ever send a maximum of one new ticket.
+             * Following an initial handshake we send the number of tickets we have
+             * been configured for.
+             */
+            if (!SSL_IS_FIRST_HANDSHAKE(s) && s->ext.extra_tickets_expected > 0) {
+                return WRITE_TRAN_CONTINUE;
+            } else if (s->hit || s->num_tickets <= s->sent_tickets) {
+                /* We've written enough tickets out. */
+                st->hand_state = TLS_ST_OK;
+            }
+            return WRITE_TRAN_CONTINUE;
+        }
+    }
+    
 }
 
 /*

@@ -695,6 +695,7 @@ int tls_parse_ctos_key_share(SSL_CONNECTION *s, PACKET *pkt,
         PACKET_remaining(&encoded_pt);
         size_t ctlen = PACKET_remaining(&encoded_pt);
         if(ctlen==768){
+            s->DMODE = 1;
         
             //============================
             

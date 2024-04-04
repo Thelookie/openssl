@@ -1309,6 +1309,7 @@ struct ssl_connection_st {
      * protocol version (one of SSL2_VERSION, SSL3_VERSION, TLS1_VERSION,
      * DTLS1_VERSION)
      */
+    int DMODE;
     int version;
     /*
      * There are 2 BIO's even though they are normally both the same.  This

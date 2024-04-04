@@ -2679,11 +2679,14 @@ int check_in_list(SSL_CONNECTION *s, uint16_t group_id, const uint16_t *groups,
 {
     size_t i;
 
+    //printf("num_groups: %d\n", num_groups);
+
     if (groups == NULL || num_groups == 0)
         return 0;
 
     for (i = 0; i < num_groups; i++) {
         uint16_t group = groups[i];
+        //printf("group: %d", group);
 
         if (group_id == group
                 && (!checkallow
