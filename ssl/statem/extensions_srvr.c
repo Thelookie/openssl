@@ -1897,7 +1897,7 @@ EXT_RETURN tls_construct_stoc_key_share(SSL_CONNECTION *s, WPACKET *pkt,
          */
         //if (ssl_gensecret(s, s->s3.tmp.pms, s->s3.tmp.pmslen) == 0) {
             /* SSLfatal() already called */
-        //    return EXT_RETURN_FAIL;
+         //   return EXT_RETURN_FAIL;
         //}
     
     s->s3.did_kex = 1;

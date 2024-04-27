@@ -879,7 +879,7 @@ static SUB_STATE_RETURN read_state_machine(SSL_CONNECTION *s)
     }
 
     while (1) {
-        printf("St->read_state_machine: %d\n",st->read_state);
+        printf("aaSt->read_state_machine: %d\n",st->read_state);
         switch (st->read_state) {
         case READ_STATE_HEADER:
             /* Get the state the peer wants to move to */
@@ -1022,7 +1022,7 @@ static SUB_STATE_RETURN read_state_machine_reduce(SSL_CONNECTION *s) {
     cb = get_callback(s);
 
     if (s->server) {
-        transition = ossl_statem_server_read_transition_reduce;
+        transition = ossl_statem_server_read_transition;
         process_message = ossl_statem_server_process_message_reduce;
         max_message_size = ossl_statem_server_max_message_size;
         post_process_message = ossl_statem_server_post_process_message_reduce;

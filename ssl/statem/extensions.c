@@ -641,9 +641,9 @@ int tls_collect_extensions(SSL_CONNECTION *s, PACKET *packet,
             goto err;
         }
 
-        if(type == 53){
+        if(type == 65280){
             printf("move early_data_state to SSL_DNS_CCS\n");
-            s->early_data_state = SSL_DNS_CCS;
+            s->DMODE=1;
         }
         /*
          * Verify this extension is allowed. We only check duplicates for

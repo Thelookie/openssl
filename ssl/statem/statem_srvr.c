@@ -702,7 +702,8 @@ static WRITE_TRAN ossl_statem_server13_write_transition(SSL_CONNECTION *s)
                 st->hand_state = TLS_ST_SW_COMP_CERT;
             else{
                 //pqtls revise
-                st->hand_state = TLS_ST_SW_FINISHED;
+                //st->hand_state = TLS_ST_SW_FINISHED;
+                st->hand_state = TLS_ST_SW_CERT_VRFY;
             }
 
             return WRITE_TRAN_CONTINUE;
