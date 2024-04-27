@@ -574,7 +574,7 @@ __owur static ossl_inline int PACKET_get_length_prefixed_2(PACKET *pkt,
     *pkt = tmp;
     subpkt->curr = data;
     subpkt->remaining = length;
-    printf("PACKET_get_length_prefixed_2 length: %d\n", length);
+    //printf("PACKET_get_length_prefixed_2 length: %d\n", length);
 
     return 1;
 }
@@ -600,7 +600,7 @@ __owur static ossl_inline int PACKET_as_length_prefixed_2(PACKET *pkt,
     subpkt->curr = data;
     subpkt->remaining = length;
 
-    printf("PACKET_as_length_prefixed_2 length: %d\n", length);
+    //printf("PACKET_as_length_prefixed_2 length: %d\n", length);
 
     return 1;
 }

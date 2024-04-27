@@ -313,7 +313,7 @@ int tls13_generate_master_secret(SSL_CONNECTION *s, unsigned char *out,
                                  unsigned char *prev, size_t prevlen,
                                  size_t *secret_size)
 {
-    printf("\nim here\n");
+    //printf("\nim here\n");
     const EVP_MD *md = ssl_handshake_md(s);
 
     *secret_size = EVP_MD_get_size(md);
@@ -365,7 +365,7 @@ size_t tls13_final_finish_mac(SSL_CONNECTION *s, const char *str, size_t slen,
         */
         key = s->client_finished_secret;
     }
-    printf("final key: %s\n", key);
+    //printf("final key: %s\n", key);
     if (!EVP_Q_mac(sctx->libctx, "HMAC", sctx->propq, mdname,
                    params, key, hashlen, hash, hashlen,
                    /* outsize as per sizeof(peer_finish_md) */
@@ -717,7 +717,7 @@ int tls13_change_cipher_state(SSL_CONNECTION *s, int which)
             goto err;
         }
     } else if (label == client_application_traffic){
-        printf("\nhere2\n");
+        //printf("\nhere2\n");
         memcpy(s->client_app_traffic_secret, secret, hashlen);
     }
 

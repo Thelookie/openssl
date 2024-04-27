@@ -1669,7 +1669,7 @@ static const BIO_METHOD *fd_method(SSL *s)
 
 int SSL_set_fd(SSL *s, int fd)
 {
-    printf("start setting fd\n");
+    //printf("start setting fd\n");
     int ret = 0;
     BIO *bio = NULL;
 

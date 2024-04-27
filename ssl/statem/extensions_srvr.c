@@ -685,7 +685,7 @@ int tls_parse_ctos_key_share(SSL_CONNECTION *s, PACKET *pkt,
         s->s3.group_id = group_id;
         /* Cache the selected group ID in the SSL_SESSION */
         s->session->kex_group = group_id;
-        printf("group_id: %d\n",group_id);
+        //printf("group_id: %d\n",group_id);
 
         if ((s->s3.peer_tmp = ssl_generate_param_group(s, group_id)) == NULL) {
             SSLfatal(s, SSL_AD_INTERNAL_ERROR,
@@ -704,7 +704,7 @@ int tls_parse_ctos_key_share(SSL_CONNECTION *s, PACKET *pkt,
                 SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_KEY_SHARE);
                 return 0;
             }
-            printf("ginf->is_kem: %d\n",ginf->is_kem);
+            //printf("ginf->is_kem: %d\n",ginf->is_kem);
             
             /*
             if (!PACKET_as_length_prefixed_2(pkt, &encoded_pt)
@@ -719,7 +719,7 @@ int tls_parse_ctos_key_share(SSL_CONNECTION *s, PACKET *pkt,
                 return 0;
             }
             if(ginf->is_kem){
-                printf("DNS-BASED KEM MODE\n");
+                //printf("DNS-BASED KEM MODE\n");
                 const unsigned char *ct = PACKET_data(&encoded_pt);
                 size_t ctlen = PACKET_remaining(&encoded_pt);
 
@@ -730,16 +730,14 @@ int tls_parse_ctos_key_share(SSL_CONNECTION *s, PACKET *pkt,
                 //PEM_write_PrivateKey(stdout, skey, NULL, NULL, 0, NULL, NULL);
                 fclose(f);
 
-                printf("ct: %s\n", ct);
-                printf("ctlen: %ld\n", ctlen);
+                //printf("ct: %s\n", ct);
+                //printf("ctlen: %ld\n", ctlen);
 
                 if (ssl_decapsulate(s, skey, ct, ctlen, 1) == 0) {
                     return 0;
                 }
 
             }
-            printf("444\n");
-
 
             s->s3.did_kex = 1;
             
@@ -1849,11 +1847,11 @@ EXT_RETURN tls_construct_stoc_key_share(SSL_CONNECTION *s, WPACKET *pkt,
         //        *s = tmp;
     } else {
         /* KEM mode */
-        printf("extensions_srvr KEM mode\n");
+        //printf("extensions_srvr KEM mode\n");
         
         struct timespec begin;
         clock_gettime(CLOCK_MONOTONIC, &begin);
-        printf("Kyber key is prepared : %f\n",(begin.tv_sec) + (begin.tv_nsec) / 1000000000.0);
+        //printf("Kyber key is prepared : %f\n",(begin.tv_sec) + (begin.tv_nsec) / 1000000000.0);
 
     
             unsigned char *ct = NULL;
@@ -1870,7 +1868,7 @@ EXT_RETURN tls_construct_stoc_key_share(SSL_CONNECTION *s, WPACKET *pkt,
             }
 
           
-            printf("ssl_encapsulate\n");
+            //printf("ssl_encapsulate\n");
             //if (ssl_encapsulate(s, ckey, &ct, &ctlen, 0) == 0) {
             //    return EXT_RETURN_FAIL;
             //}

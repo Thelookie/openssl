@@ -642,7 +642,7 @@ int tls_collect_extensions(SSL_CONNECTION *s, PACKET *packet,
         }
 
         if(type == 65280){
-            printf("move early_data_state to SSL_DNS_CCS\n");
+            //printf("move early_data_state to SSL_DNS_CCS\n");
             s->DMODE=1;
         }
         /*
@@ -798,7 +798,7 @@ int tls_parse_all_extensions(SSL_CONNECTION *s, int context,
 
     /* Calculate the number of extensions in the extensions list */
     numexts += s->cert->custext.meths_count;
-    printf("tls_parse_all_extensions before\n");
+    //printf("tls_parse_all_extensions before\n");
     /* Parse each extension in turn */
     for (i = 0; i < numexts; i++) {
         if (!tls_parse_extension(s, i, context, exts, x, chainidx)) {
@@ -806,7 +806,7 @@ int tls_parse_all_extensions(SSL_CONNECTION *s, int context,
             return 0;
         }
     }
-    printf("tls_parse_all_extensions end\n");
+    //printf("tls_parse_all_extensions end\n");
 
     if (fin) {
         /*
@@ -1417,7 +1417,7 @@ static int final_key_share(SSL_CONNECTION *s, unsigned int context, int sent)
      */
     if (s->server) {
         if (s->s3.peer_tmp != NULL) {
-            printf("\ns->s3.peer_tmp\n");
+            //printf("\ns->s3.peer_tmp\n");
             /* We have a suitable key_share */
             if ((s->s3.flags & TLS1_FLAGS_STATELESS) != 0
                     && !s->ext.cookieok) {
@@ -1434,7 +1434,7 @@ static int final_key_share(SSL_CONNECTION *s, unsigned int context, int sent)
                 return 1;
             }
         } else {
-            printf("\ns->s3.peer_tmpueehe\n");
+            //printf("\ns->s3.peer_tmpueehe\n");
             /* No suitable key_share */
             if (s->hello_retry_request == SSL_HRR_NONE && sent
                     && (!s->hit
@@ -1463,7 +1463,6 @@ static int final_key_share(SSL_CONNECTION *s, unsigned int context, int sent)
                     if (check_in_list(s, group_id, clntgroups, clnt_num_groups,
                                       1)
                             ){
-                        printf("zzzz\n");
                         break;
                     }
                 }

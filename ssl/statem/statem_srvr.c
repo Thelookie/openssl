@@ -368,17 +368,17 @@ int ossl_statem_server_read_transition_reduce(SSL_CONNECTION *s, int mt) {
             goto err;
         return 1;
     }
-    printf("ossl_statem hand state: %d\n",st->hand_state);
+    //printf("ossl_statem hand state: %d\n",st->hand_state);
     switch (st->hand_state) {
         default:
             break;
 
         case TLS_ST_BEFORE:
-            printf("TLS_ST_BEFORE\n");
+            //printf("TLS_ST_BEFORE\n");
         case TLS_ST_OK:
         case DTLS_ST_SW_HELLO_VERIFY_REQUEST:
             if (mt == SSL3_MT_CLIENT_HELLO) {
-                printf("SSL3_MT_CLIENT_HELLO\n");
+                //printf("SSL3_MT_CLIENT_HELLO\n");
                 st->hand_state = TLS_ST_SR_CLNT_HELLO;
                 return 1;
             }
@@ -648,7 +648,7 @@ static WRITE_TRAN ossl_statem_server13_write_transition(SSL_CONNECTION *s)
      * No case for TLS_ST_BEFORE, because at that stage we have not negotiated
      * TLSv1.3 yet, so that is handled by ossl_statem_server_write_transition()
      */
-    printf("st-> hand_state in ossl_statem_server13_write_transition: %d\n",st->hand_state);
+    //printf("st-> hand_state in ossl_statem_server13_write_transition: %d\n",st->hand_state);
     if(s->DMODE==1){
         switch (st->hand_state) {
         default:
@@ -1650,7 +1650,7 @@ MSG_PROCESS_RETURN ossl_statem_server_process_message(SSL_CONNECTION *s,
 
 MSG_PROCESS_RETURN ossl_statem_server_process_message_reduce(SSL_CONNECTION *s, PACKET *pkt) {
     OSSL_STATEM *st = &s->statem;
-    printf("ssl_statem_server_process_message_reduce st->hand_state: %d\n",st->hand_state);
+    //printf("ssl_statem_server_process_message_reduce st->hand_state: %d\n",st->hand_state);
     switch (st->hand_state) {
         default:
             /* Shouldn't happen */
@@ -1712,7 +1712,7 @@ WORK_STATE ossl_statem_server_post_process_message(SSL_CONNECTION *s,
 
 WORK_STATE ossl_statem_server_post_process_message_reduce(SSL_CONNECTION *s, WORK_STATE wst, PACKET* pkt) {
     OSSL_STATEM *st = &s->statem;
-    printf("\npost_process_message: %d\n", st->hand_state);
+    //printf("\npost_process_message: %d\n", st->hand_state);
     switch (st->hand_state) {
         default:
             /* Shouldn't happen */
@@ -1873,7 +1873,7 @@ MSG_PROCESS_RETURN tls_process_client_hello(SSL_CONNECTION *s, PACKET *pkt)
 
     /* Check if this is actually an unexpected renegotiation ClientHello */
     if (s->renegotiate == 0 && !SSL_IS_FIRST_HANDSHAKE(s)) {
-        printf("renegotiate run\n");
+        //printf("renegotiate run\n");
         if (!ossl_assert(!SSL_CONNECTION_IS_TLS13(s))) {
             SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
             goto err;
@@ -2080,7 +2080,7 @@ MSG_PROCESS_RETURN tls_process_client_hello(SSL_CONNECTION *s, PACKET *pkt)
 
 static int tls_early_post_process_client_hello(SSL_CONNECTION *s)
 {
-    printf("tls_early_post_process_client_hello\n");
+    //printf("tls_early_post_process_client_hello\n");
     unsigned int j;
     int i, al = SSL_AD_INTERNAL_ERROR;
     int protverr;
@@ -2218,7 +2218,7 @@ static int tls_early_post_process_client_hello(SSL_CONNECTION *s)
                 s->s3.send_connection_binding = 1;
             } else if (SSL_CIPHER_get_id(c) == SSL3_CK_FALLBACK_SCSV &&
                        !ssl_check_version_downgrade(s)) {
-                printf("\nscsvs3\n");
+                //printf("\nscsvs3\n");
                 /*
                  * This SCSV indicates that the client previously tried
                  * a higher version.  We should fail if the current version
@@ -2689,7 +2689,7 @@ int tls_handle_alpn(SSL_CONNECTION *s)
 
 WORK_STATE tls_post_process_client_hello(SSL_CONNECTION *s, WORK_STATE wst)
 {   
-    printf("enterd to tls_post_process_client_hello\n");
+    //printf("enterd to tls_post_process_client_hello\n");
     const SSL_CIPHER *cipher;
     SSL *ssl = SSL_CONNECTION_GET_SSL(s);
 
@@ -2919,17 +2919,17 @@ CON_FUNC_RETURN tls_construct_server_hello(SSL_CONNECTION *s, WPACKET *pkt)
 }
 
 WORK_STATE tls_post_process_client_hello_reduce(SSL_CONNECTION *s, WORK_STATE wst, PACKET* pkt) {
-    printf("enterd to tls_post_process_client_hello_reduce\n");
+    //printf("enterd to tls_post_process_client_hello_reduce\n");
 
     const SSL_CIPHER *cipher;
     SSL *ssl = SSL_CONNECTION_GET_SSL(s);
-    printf("early_data_state: %d\n", s->early_data_state);
+    //printf("early_data_state: %d\n", s->early_data_state);
   //  printf("  bbbb: %s\n",SSL_state_string_long(SSL_CONNECTION_GET_SSL(s)));
     int BUF_SIZE = 100;
     char buf[BUF_SIZE];
 
     if (wst == WORK_MORE_A) {
-        printf("work more a\n");
+        //printf("work more a\n");
         int rv = tls_early_post_process_client_hello(s);
         if (rv == 0) {
             /* SSLfatal() was already called */
@@ -2940,13 +2940,13 @@ WORK_STATE tls_post_process_client_hello_reduce(SSL_CONNECTION *s, WORK_STATE ws
         wst = WORK_MORE_B;
     }
     if (wst == WORK_MORE_B) {
-        printf("work more b\n");
+        //printf("work more b\n");
      //   printf("  cccc: %s\n",SSL_state_string_long(SSL_CONNECTION_GET_SSL(s)));
         if (!s->hit || SSL_CONNECTION_IS_TLS13(s)) {
-                        printf("work more b scope\n");
+                        //printf("work more b scope\n");
             /* Let cert callback update server certificates if required */
             if (!s->hit && s->cert->cert_cb != NULL) {
-                printf("its not reused session and cert_cb is not NULL\n");
+                //printf("its not reused session and cert_cb is not NULL\n");
                 int rv = s->cert->cert_cb(ssl, s->cert->cert_cb_arg);
                 if (rv == 0) {
                     SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_R_CERT_CB_ERROR);
@@ -2973,7 +2973,7 @@ WORK_STATE tls_post_process_client_hello_reduce(SSL_CONNECTION *s, WORK_STATE ws
             }
             if (!s->hit) {
                 if (!tls_choose_sigalg(s, 1)) {
-                    printf("choose_sigalg\n");
+                    //printf("choose_sigalg\n");
                     /* SSLfatal already called */
                     goto err;
                 }
@@ -3027,7 +3027,7 @@ WORK_STATE tls_post_process_client_hello_reduce(SSL_CONNECTION *s, WORK_STATE ws
     }
 #ifndef OPENSSL_NO_SRP
     if (wst == WORK_MORE_C) {
-        printf("work more c\n");
+        //printf("work more c\n");
        // printf("  ddddd: %s\n",SSL_state_string_long(SSL_CONNECTION_GET_SSL(s)));
         int ret;
         if ((ret = ssl_check_srp_ext_ClientHello(s)) == 0) {
@@ -3044,7 +3044,7 @@ WORK_STATE tls_post_process_client_hello_reduce(SSL_CONNECTION *s, WORK_STATE ws
     }
 #endif
     if(s->early_data_state == SSL_DNS_CCS){
-        printf("fix the server's kyber512 keyshare\n");
+        //printf("fix the server's kyber512 keyshare\n");
 #include <time.h>
         //printf("    read server's kyber512 keyshare from file ");
         struct timespec begin;
@@ -3086,7 +3086,7 @@ WORK_STATE tls_post_process_client_hello_reduce(SSL_CONNECTION *s, WORK_STATE ws
         if (!ssl->method->ssl3_enc->setup_key_block(s)
         || !ssl->method->ssl3_enc->change_cipher_state(s,
                                                      SSL3_CC_HANDSHAKE | SSL3_CHANGE_CIPHER_SERVER_READ)) {
-            printf("setup_key_block or change_cipher_state is goes bad!!\n");
+            //printf("setup_key_block or change_cipher_state is goes bad!!\n");
             /* SSLfatal() already called */
             goto err;
         }
@@ -3127,17 +3127,17 @@ WORK_STATE tls_post_process_client_hello_reduce(SSL_CONNECTION *s, WORK_STATE ws
 
 //    return WORK_FINISHED_STOP;
     if(s->early_data_state == SSL_DNS_CCS){
-        printf("WORK_FINISHED_CONTINUE go\n");
+        //printf("WORK_FINISHED_CONTINUE go\n");
         return WORK_FINISHED_CONTINUE;
     }
     else{
-        printf("WORK_FINISHED_STOP\n");
+        //printf("WORK_FINISHED_STOP\n");
         return WORK_FINISHED_STOP;
     }
 
     err:
     {
-    printf("error aqurred!\n");
+    //printf("error aqurred!\n");
     return WORK_ERROR;
     }
 }
@@ -4457,7 +4457,7 @@ MSG_PROCESS_RETURN tls_process_client_compressed_certificate(SSL_CONNECTION *sc,
 
 CON_FUNC_RETURN tls_construct_server_certificate(SSL_CONNECTION *s, WPACKET *pkt)
 {
-    printf("tls_construct_server_certificate\n");
+    //printf("tls_construct_server_certificate\n");
     CERT_PKEY *cpk = s->s3.tmp.cert;
 
     if (cpk == NULL) {
@@ -4481,7 +4481,7 @@ CON_FUNC_RETURN tls_construct_server_certificate(SSL_CONNECTION *s, WPACKET *pkt
         }
         break;
     case TLSEXT_cert_type_x509:
-        printf("TLSEXT_cert_type_x509\n");
+        //printf("TLSEXT_cert_type_x509\n");
         if (!ssl3_output_cert_chain(s, pkt, cpk, 0)) {
             /* SSLfatal() already called */
             return 0;

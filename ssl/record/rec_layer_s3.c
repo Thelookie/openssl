@@ -703,13 +703,13 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
         return 0;
     }
    // printf("aaa\n");
-    printf("type: %d\n", type);
-    printf("rr->type: %d\n",rr->type);
+    //printf("type: %d\n", type);
+    //printf("rr->type: %d\n",rr->type);
     if (type == rr->type
         || (rr->type == SSL3_RT_CHANGE_CIPHER_SPEC
             && type == SSL3_RT_HANDSHAKE && recvd_type != NULL
             && !is_tls13)) {
-        printf("triggered\n");
+        //printf("triggered\n");
         /*
          * SSL3_RT_APPLICATION_DATA or
          * SSL3_RT_HANDSHAKE or
@@ -1035,7 +1035,7 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
         }
         goto start;
     }
-    printf("before switch rr->type: %d\n", rr->type);
+    //printf("before switch rr->type: %d\n", rr->type);
     switch (rr->type) {
     default:
         /*
@@ -1089,7 +1089,7 @@ int ssl3_read_bytes(SSL *ssl, uint8_t type, uint8_t *recvd_type,
             goto start;
         } else {
             SSLfatal(s, SSL_AD_UNEXPECTED_MESSAGE, SSL_R_UNEXPECTED_RECORD);
-            printf("ooo\n");
+            //printf("ooo\n");
             return -1;
         }
     }
